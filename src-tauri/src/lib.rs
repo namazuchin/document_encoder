@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 use tokio::time::{sleep, Duration};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -19,6 +19,13 @@ struct AppSettings {
     gemini_api_key: String,
     #[serde(default = "default_language")]
     language: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct ProgressUpdate {
+    message: String,
+    step: usize,
+    total_steps: usize,
 }
 
 fn default_language() -> String {
@@ -137,14 +144,38 @@ async fn select_video_files(app: tauri::AppHandle) -> Result<Vec<VideoFile>, Str
 }
 
 #[tauri::command]
-async fn generate_document(files: Vec<VideoFile>, settings: AppSettings) -> Result<String, String> {
+async fn generate_document(files: Vec<VideoFile>, settings: AppSettings, app: tauri::AppHandle) -> Result<String, String> {
     println!("🚀 [BACKEND] Starting generate_document with {} files", files.len());
     println!("📋 [BACKEND] Settings: mode={}, language={}", settings.mode, settings.language);
+    
+    // Calculate total steps for progress tracking
+    let total_steps = files.len() * 3 + if files.len() > 1 { 1 } else { 0 }; // Split, Upload, Generate per file + Integration
+    let mut current_step = 0;
+    
+    // Helper function to emit progress
+    let emit_progress = |app_ref: &tauri::AppHandle, step: usize, total: usize, message: String| {
+        let progress = ProgressUpdate {
+            message: message.clone(),
+            step,
+            total_steps: total,
+        };
+        println!("📡 [EVENT] Emitting progress: step={}/{}, message={}", step, total, message);
+        if let Err(e) = app_ref.emit("progress_update", &progress) {
+            println!("❌ [EVENT] Failed to emit progress event: {}", e);
+        } else {
+            println!("✅ [EVENT] Successfully emitted progress event");
+        }
+    };
+    
+    emit_progress(&app, current_step, total_steps, "ドキュメント生成を開始しています...".to_string());
     
     // Process files and split if necessary
     let mut processed_files = Vec::new();
 
     for (index, file) in files.iter().enumerate() {
+        current_step += 1;
+        emit_progress(&app, current_step, total_steps, format!("ファイル処理中 ({}/{}): {}", index + 1, files.len(), file.name));
+        
         println!("🎬 [BACKEND] Processing file {}/{}: {}", index + 1, files.len(), file.name);
         match split_video_if_needed(&file.path).await {
             Ok(segments) => {
@@ -170,8 +201,12 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings) -> Resu
     println!("☁️ [BACKEND] Starting upload of {} processed files to Gemini API", processed_files.len());
 
     for (index, file_path) in processed_files.iter().enumerate() {
+        current_step += 1;
+        let file_name = Path::new(file_path).file_name().and_then(|n| n.to_str()).unwrap_or("不明なファイル");
+        emit_progress(&app, current_step, total_steps, format!("ファイルアップロード中 ({}/{}): {}", index + 1, processed_files.len(), file_name));
+        
         println!("📤 [BACKEND] Uploading file {}/{}: {}", index + 1, processed_files.len(), file_path);
-        match upload_to_gemini(file_path, &settings.gemini_api_key).await {
+        match upload_to_gemini_with_progress(file_path, &settings.gemini_api_key, &app, current_step, total_steps).await {
             Ok(uri) => {
                 println!("✅ [BACKEND] Successfully uploaded file, URI: {}", uri);
                 file_uris.push(uri);
@@ -188,12 +223,18 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings) -> Resu
     println!("🤖 [BACKEND] Starting document generation for {} uploaded files", file_uris.len());
 
     for (index, file_uri) in file_uris.iter().enumerate() {
+        current_step += 1;
+        emit_progress(&app, current_step, total_steps, format!("ドキュメント生成中 ({}/{})", index + 1, file_uris.len()));
+        
         println!("📝 [BACKEND] Generating document {}/{} for URI: {}", index + 1, file_uris.len(), file_uri);
-        match generate_with_gemini(
+        match generate_with_gemini_with_progress(
             &[file_uri.clone()],
             &settings.mode,
             &settings.language,
             &settings.gemini_api_key,
+            &app,
+            current_step,
+            total_steps,
         )
         .await
         {
@@ -210,6 +251,9 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings) -> Resu
 
     // Integrate multiple documents if necessary
     let final_document = if documents.len() > 1 {
+        current_step += 1;
+        emit_progress(&app, current_step, total_steps, "複数のドキュメントを統合中...".to_string());
+        
         println!("🔗 [BACKEND] Integrating {} documents into final document", documents.len());
         match integrate_documents(
             &documents,
@@ -233,12 +277,48 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings) -> Resu
         documents.into_iter().next().unwrap_or_default()
     };
 
+    emit_progress(&app, total_steps, total_steps, "ドキュメント生成が完了しました！".to_string());
     println!("🎉 [BACKEND] Document generation completed successfully (final length: {})", final_document.len());
     Ok(final_document)
 }
 
-async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
+async fn upload_to_gemini_with_progress(file_path: &str, api_key: &str, app: &tauri::AppHandle, base_step: usize, total_steps: usize) -> Result<String> {
+    let emit_progress = |message: String| {
+        let progress = ProgressUpdate {
+            message: message.clone(),
+            step: base_step,
+            total_steps,
+        };
+        println!("📡 [UPLOAD_EVENT] Emitting progress: step={}/{}, message={}", base_step, total_steps, message);
+        if let Err(e) = app.emit("progress_update", &progress) {
+            println!("❌ [UPLOAD_EVENT] Failed to emit progress event: {}", e);
+        } else {
+            println!("✅ [UPLOAD_EVENT] Successfully emitted progress event");
+        }
+    };
+    
+    // Also create a detailed progress emitter that updates the main progress message
+    let emit_detailed_progress = |detail_message: String| {
+        let progress = ProgressUpdate {
+            message: detail_message.clone(),
+            step: base_step,
+            total_steps,
+        };
+        if let Err(e) = app.emit("progress_update", &progress) {
+            println!("❌ [UPLOAD_EVENT] Failed to emit detailed progress: {}", e);
+        }
+    };
+    
+    upload_to_gemini_internal(file_path, api_key, emit_detailed_progress).await
+}
+
+async fn upload_to_gemini_internal<F>(file_path: &str, api_key: &str, emit_progress: F) -> Result<String> 
+where 
+    F: Fn(String),
+{
     println!("📂 [UPLOAD] Starting upload for file: {}", file_path);
+    emit_progress("ファイルを読み込み中...".to_string());
+    
     let client = reqwest::Client::new();
     let file_data = fs::read(file_path)?;
     let file_size = file_data.len();
@@ -253,6 +333,8 @@ async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
 
     // 1. Start resumable upload session
     println!("🌐 [UPLOAD] Step 1: Starting resumable upload session");
+    emit_progress("アップロードセッションを開始中...".to_string());
+    
     let start_request_body = serde_json::json!({
         "file": {
             "display_name": file_name_for_display
@@ -296,6 +378,8 @@ async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
 
     // 2. Upload the file bytes
     println!("📤 [UPLOAD] Step 2: Uploading file bytes ({} bytes)", file_size);
+    emit_progress(format!("ファイルをアップロード中... ({:.1} MB)", file_size as f64 / 1_000_000.0));
+    
     let upload_response = client
         .post(&upload_url)
         .header("Content-Length", file_size.to_string())
@@ -321,11 +405,14 @@ async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
 
     // 3. Poll for file processing to complete.
     println!("⏳ [UPLOAD] Step 3: Waiting for file processing to complete...");
+    emit_progress("ファイル処理の完了を待機中...".to_string());
+    
     let mut retry_count = 0;
     let max_retries = 60; // 最大10分間待機
 
     loop {
         retry_count += 1;
+        emit_progress(format!("ファイル処理状況を確認中... ({}/{}回目)", retry_count, max_retries));
         println!("🔄 [UPLOAD] Checking file status (attempt {}/{})", retry_count, max_retries);
         
         let get_response = client
@@ -352,27 +439,33 @@ async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
             match state.as_str() {
                 "ACTIVE" => {
                     if let Some(uri) = file_info.uri {
+                        emit_progress("ファイル処理完了！ドキュメント生成準備中...".to_string());
                         println!("🎉 [UPLOAD] File processing completed! URI: {}", uri);
                         return Ok(uri);
                     } else {
+                        emit_progress("エラー: ファイルは処理されましたがURIが見つかりません".to_string());
                         println!("❌ [UPLOAD] File is ACTIVE but URI is missing");
                         return Err(anyhow::anyhow!("File is ACTIVE but URI is missing."));
                     }
                 }
                 "PROCESSING" => {
                     if retry_count > max_retries {
+                        emit_progress("タイムアウト: ファイル処理に時間がかかりすぎています".to_string());
                         println!("⏰ [UPLOAD] File processing timeout after {} attempts", max_retries);
                         return Err(anyhow::anyhow!("File processing timeout."));
                     }
+                    emit_progress(format!("ファイル処理中... 10秒後に再確認 ({}/{}回目)", retry_count, max_retries));
                     println!("⏳ [UPLOAD] File still processing, waiting 10 seconds...");
                     sleep(Duration::from_secs(10)).await;
                     continue;
                 }
                 "FAILED" => {
+                    emit_progress("エラー: サーバーでファイル処理に失敗しました".to_string());
                     println!("❌ [UPLOAD] File processing failed on the server");
                     return Err(anyhow::anyhow!("File processing failed on the server."));
                 }
                 _ => {
+                    emit_progress(format!("不明な状態: {}", state));
                     println!("❓ [UPLOAD] Unknown file state received: {}", state);
                     return Err(anyhow::anyhow!("Unknown file state received: {}", state));
                 }
@@ -380,12 +473,37 @@ async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
         } else {
             println!("📊 [UPLOAD] No state field in response, assuming still processing");
             if retry_count > max_retries {
+                emit_progress("タイムアウト: ファイル状態の確認に失敗しました".to_string());
                 println!("⏰ [UPLOAD] File processing timeout (no state) after {} attempts", max_retries);
                 return Err(anyhow::anyhow!("File processing timeout (no state)."));
             }
+            emit_progress(format!("状態不明のためファイル処理中と仮定... ({}/{}回目)", retry_count, max_retries));
             sleep(Duration::from_secs(5)).await;
         }
     }
+}
+
+async fn generate_with_gemini_with_progress(
+    file_uris: &[String],
+    mode: &str,
+    language: &str,
+    api_key: &str,
+    app: &tauri::AppHandle,
+    base_step: usize,
+    total_steps: usize,
+) -> Result<String> {
+    let emit_progress = |message: String| {
+        let progress = ProgressUpdate {
+            message: message.clone(),
+            step: base_step,
+            total_steps,
+        };
+        if let Err(e) = app.emit("progress_update", &progress) {
+            println!("❌ [GENERATE_EVENT] Failed to emit progress: {}", e);
+        }
+    };
+    
+    generate_with_gemini_internal(file_uris, mode, language, api_key, emit_progress).await
 }
 
 async fn generate_with_gemini(
@@ -394,8 +512,22 @@ async fn generate_with_gemini(
     language: &str,
     api_key: &str,
 ) -> Result<String> {
+    generate_with_gemini_internal(file_uris, mode, language, api_key, |_| {}).await
+}
+
+async fn generate_with_gemini_internal<F>(
+    file_uris: &[String],
+    mode: &str,
+    language: &str,
+    api_key: &str,
+    emit_progress: F,
+) -> Result<String> 
+where
+    F: Fn(String),
+{
     println!("🤖 [GENERATE] Starting document generation with Gemini API");
     println!("📋 [GENERATE] Mode: {}, Language: {}, Files: {}", mode, language, file_uris.len());
+    emit_progress("AIによるドキュメント生成を準備中...".to_string());
     let client = reqwest::Client::new();
 
     let language_instruction = match language {
@@ -443,6 +575,7 @@ async fn generate_with_gemini(
     };
 
     println!("🌐 [GENERATE] Sending request to Gemini API...");
+    emit_progress("Gemini AIにドキュメント生成を依頼中...".to_string());
     let response = client
         .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-06-05:generateContent?key={}", api_key))
         .json(&request)
@@ -451,20 +584,24 @@ async fn generate_with_gemini(
 
     if response.status().is_success() {
         println!("✅ [GENERATE] Received successful response from Gemini API");
+        emit_progress("AIの応答を受信中...".to_string());
         let gemini_response: GeminiResponse = response.json().await?;
         if let Some(candidate) = gemini_response.candidates.first() {
             if let Some(part) = candidate.content.parts.first() {
                 if let GeminiPart::Text { text } = part {
                     println!("📝 [GENERATE] Generated document length: {} characters", text.len());
+                    emit_progress(format!("ドキュメント生成完了！ ({}文字)", text.len()));
                     return Ok(text.clone());
                 }
             }
         }
         println!("❌ [GENERATE] No text content found in response");
+        emit_progress("エラー: AIの応答にテキストが含まれていません".to_string());
         Err(anyhow::anyhow!("No text content in response"))
     } else {
         let error_text = response.text().await?;
         println!("❌ [GENERATE] API request failed: {}", error_text);
+        emit_progress(format!("エラー: AI生成に失敗しました - {}", error_text));
         Err(anyhow::anyhow!("API request failed: {}", error_text))
     }
 }

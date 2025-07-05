@@ -134,6 +134,126 @@
   margin-bottom: 30px;
 }
 
+.progress-section {
+  margin-top: 20px;
+  padding: 15px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.progress-message {
+  font-weight: 500;
+  color: #495057;
+  margin-bottom: 10px;
+}
+
+.progress-bar-container {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.progress-bar {
+  flex: 1;
+  height: 20px;
+  background: #e9ecef;
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, #007bff, #0056b3);
+  transition: width 0.3s ease;
+  border-radius: 10px;
+}
+
+.progress-text {
+  font-size: 14px;
+  font-weight: 500;
+  color: #6c757d;
+  min-width: 50px;
+  text-align: right;
+}
+
+.log-section {
+  margin-top: 15px;
+  border-top: 1px solid #dee2e6;
+  padding-top: 15px;
+}
+
+.log-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.log-buttons {
+  display: flex;
+  gap: 8px;
+}
+
+.log-header span {
+  font-weight: 500;
+  color: #495057;
+}
+
+.log-toggle-btn {
+  background: #007bff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.log-toggle-btn:hover {
+  background: #0056b3;
+}
+
+.log-clear-btn {
+  background: #dc3545;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 4px 8px;
+  font-size: 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.log-clear-btn:hover {
+  background: #c82333;
+}
+
+.log-container {
+  max-height: 200px;
+  overflow-y: auto;
+  background: #ffffff;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+  padding: 10px;
+}
+
+.log-entry {
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  line-height: 1.4;
+  margin-bottom: 2px;
+  color: #495057;
+  word-break: break-all;
+}
+
+.log-empty {
+  color: #6c757d;
+  font-style: italic;
+  text-align: center;
+}
+
 .generate-btn {
   background: #28a745;
   color: white;
@@ -304,5 +424,43 @@
     background: #3f3f3f;
     border-color: #555;
     color: #f6f6f6;
+  }
+
+  .progress-section {
+    background: #3f3f3f;
+    border-color: #555;
+  }
+
+  .progress-message {
+    color: #f6f6f6;
+  }
+
+  .progress-bar {
+    background: #555;
+  }
+
+  .progress-text {
+    color: #adb5bd;
+  }
+
+  .log-section {
+    border-top-color: #555;
+  }
+
+  .log-header span {
+    color: #f6f6f6;
+  }
+
+  .log-container {
+    background: #2f2f2f;
+    border-color: #555;
+  }
+
+  .log-entry {
+    color: #f6f6f6;
+  }
+
+  .log-empty {
+    color: #adb5bd;
   }
 }

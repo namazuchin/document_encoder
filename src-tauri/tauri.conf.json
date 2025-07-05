@@ -30,7 +30,10 @@
             "dialog:allow-ask",
             "dialog:allow-confirm",
             "dialog:allow-open",
-            "dialog:allow-save"
+            "dialog:allow-save",
+            "core:event:allow-listen",
+            "core:event:allow-emit",
+            "core:event:default"
           ]
         }
       ]
