@@ -1,5 +1,6 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 
 type DocumentMode = "manual" | "specification";
@@ -16,6 +17,12 @@ interface AppSettings {
   language: string;
 }
 
+interface ProgressUpdate {
+  message: string;
+  step: number;
+  total_steps: number;
+}
+
 function App() {
   const [selectedFiles, setSelectedFiles] = useState<VideoFile[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
@@ -26,20 +33,59 @@ function App() {
   const [isProcessing, setIsProcessing] = useState(false);
   const [generatedDocument, setGeneratedDocument] = useState("");
   const [showSettings, setShowSettings] = useState(false);
+  const [progressMessage, setProgressMessage] = useState("");
+  const [progressStep, setProgressStep] = useState(0);
+  const [totalSteps, setTotalSteps] = useState(0);
+  const [logs, setLogs] = useState<string[]>([]);
+  const [showLogs, setShowLogs] = useState(false);
+  const logContainerRef = useRef<HTMLDivElement>(null);
+
+  const addLog = (message: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const logEntry = `[${timestamp}] ${message}`;
+    setLogs(prev => [...prev, logEntry]);
+    console.log(logEntry);
+    
+    // Auto-scroll to bottom when new log is added
+    setTimeout(() => {
+      if (logContainerRef.current) {
+        logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+      }
+    }, 100);
+  };
+
+  const clearLogs = () => {
+    setLogs([]);
+  };
 
   useEffect(() => {
     loadSettings();
+    
+    // Progress update listener
+    addLog("🎧 Setting up progress update listener...");
+    const unsubscribe = listen<ProgressUpdate>("progress_update", (event) => {
+      const { message, step, total_steps } = event.payload;
+      addLog(`📊 [FRONTEND] Received progress update: ${step}/${total_steps} - ${message}`);
+      setProgressMessage(message);
+      setProgressStep(step);
+      setTotalSteps(total_steps);
+    });
+
+    return () => {
+      unsubscribe.then(f => f());
+    };
   }, []);
 
   const handleFileSelect = async () => {
-    console.log("📁 Starting file selection...");
+    addLog("📁 Starting file selection...");
     try {
       const files = await invoke<VideoFile[]>("select_video_files");
-      console.log(`✅ Selected ${files.length} files:`, files.map(f => f.name));
+      addLog(`✅ Selected ${files.length} files: ${files.map(f => f.name).join(", ")}`);
       setSelectedFiles(files);
     } catch (error) {
-      console.error("❌ Error selecting files:", error);
-      console.error("📊 File selection error details:", JSON.stringify(error, null, 2));
+      addLog(`❌ Error selecting files: ${error}`);
+      addLog(`📊 File selection error details: ${JSON.stringify(error, null, 2)}`);
+      console.error("Error selecting files:", error);
     }
   };
 
@@ -48,65 +94,75 @@ function App() {
   };
 
   const handleGenerateDocument = async () => {
-    console.log("🚀 Starting document generation process");
+    addLog("🚀 Starting document generation process");
     
     if (selectedFiles.length === 0) {
-      console.error("❌ No video files selected");
+      addLog("❌ No video files selected");
       return;
     }
     
     if (!settings.gemini_api_key) {
-      console.error("❌ Gemini API key is not set");
+      addLog("❌ Gemini API key is not set");
       return;
     }
 
-    console.log(`📁 Processing ${selectedFiles.length} files:`, selectedFiles.map(f => f.name));
-    console.log("⚙️ Settings:", { mode: settings.mode, language: settings.language });
+    addLog(`📁 Processing ${selectedFiles.length} files: ${selectedFiles.map(f => f.name).join(", ")}`);
+    addLog(`⚙️ Settings: mode=${settings.mode}, language=${settings.language}`);
 
     setIsProcessing(true);
+    setProgressMessage("処理を開始しています...");
+    setProgressStep(0);
+    setTotalSteps(0);
+    setShowLogs(true); // 処理開始時にログを表示
+    
     try {
-      console.log("📤 Sending request to backend...");
+      addLog("📤 Sending request to backend...");
       const result = await invoke<string>("generate_document", {
         files: selectedFiles,
         settings: settings
       });
-      console.log("✅ Document generation completed successfully");
-      console.log("📄 Generated document length:", result.length);
+      addLog("✅ Document generation completed successfully");
+      addLog(`📄 Generated document length: ${result.length}`);
       setGeneratedDocument(result);
+      setProgressMessage("処理が完了しました！");
     } catch (error) {
-      console.error("❌ Error generating document:", error);
-      console.error("📊 Error details:", JSON.stringify(error, null, 2));
+      addLog(`❌ Error generating document: ${error}`);
+      addLog(`📊 Error details: ${JSON.stringify(error, null, 2)}`);
+      setProgressMessage("エラーが発生しました。");
+      console.error("Error generating document:", error);
     } finally {
       setIsProcessing(false);
-      console.log("🏁 Document generation process finished");
+      addLog("🏁 Document generation process finished");
     }
   };
 
   const handleSaveSettings = async () => {
-    console.log("💾 Saving settings...", { mode: settings.mode, language: settings.language });
+    addLog(`💾 Saving settings: mode=${settings.mode}, language=${settings.language}`);
     try {
       await invoke("save_settings", { settings });
-      console.log("✅ Settings saved successfully");
+      addLog("✅ Settings saved successfully");
       setShowSettings(false);
     } catch (error) {
-      console.error("❌ Error saving settings:", error);
-      console.error("📊 Settings save error details:", JSON.stringify(error, null, 2));
+      addLog(`❌ Error saving settings: ${error}`);
+      addLog(`📊 Settings save error details: ${JSON.stringify(error, null, 2)}`);
+      console.error("Error saving settings:", error);
     }
   };
 
   const loadSettings = async () => {
-    console.log("📖 Loading settings...");
+    addLog("📖 Loading settings...");
     try {
       const savedSettings = await invoke<AppSettings | null>("load_settings");
       if (savedSettings) {
-        console.log("✅ Settings loaded successfully:", { mode: savedSettings.mode, language: savedSettings.language });
+        addLog(`✅ Settings loaded successfully: mode=${savedSettings.mode}, language=${savedSettings.language}`);
         setSettings(savedSettings);
       } else {
-        console.log("ℹ️ No saved settings found, using defaults");
+        addLog("ℹ️ No saved settings found, using defaults");
       }
     } catch (error) {
-      console.error("❌ Error loading settings:", error);
-      console.error("📊 Settings load error details:", JSON.stringify(error, null, 2));
+      addLog(`❌ Error loading settings: ${error}`);
+      addLog(`📊 Settings load error details: ${JSON.stringify(error, null, 2)}`);
+      console.error("Error loading settings:", error);
     }
   };
 
@@ -214,6 +270,61 @@ function App() {
         >
           {isProcessing ? "処理中..." : "ドキュメント生成"}
         </button>
+        
+        {isProcessing && (
+          <div className="progress-section">
+            <div className="progress-message">{progressMessage}</div>
+            {totalSteps > 0 && (
+              <div className="progress-bar-container">
+                <div className="progress-bar">
+                  <div 
+                    className="progress-bar-fill"
+                    style={{ width: `${(progressStep / totalSteps) * 100}%` }}
+                  ></div>
+                </div>
+                <div className="progress-text">
+                  {progressStep} / {totalSteps}
+                </div>
+              </div>
+            )}
+            
+            <div className="log-section">
+              <div className="log-header">
+                <span>処理ログ ({logs.length}件)</span>
+                <div className="log-buttons">
+                  <button 
+                    className="log-toggle-btn"
+                    onClick={() => setShowLogs(!showLogs)}
+                  >
+                    {showLogs ? '非表示' : '表示'}
+                  </button>
+                  {logs.length > 0 && (
+                    <button 
+                      className="log-clear-btn"
+                      onClick={clearLogs}
+                    >
+                      クリア
+                    </button>
+                  )}
+                </div>
+              </div>
+              {showLogs && (
+                <div className="log-container" ref={logContainerRef}>
+                  {logs.map((log, index) => (
+                    <div key={index} className="log-entry">
+                      {log}
+                    </div>
+                  ))}
+                  {logs.length === 0 && (
+                    <div className="log-entry log-empty">
+                      ログはまだありません
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {generatedDocument && (
