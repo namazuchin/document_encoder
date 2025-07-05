@@ -138,55 +138,79 @@ async fn select_video_files(app: tauri::AppHandle) -> Result<Vec<VideoFile>, Str
 
 #[tauri::command]
 async fn generate_document(files: Vec<VideoFile>, settings: AppSettings) -> Result<String, String> {
+    println!("🚀 [BACKEND] Starting generate_document with {} files", files.len());
+    println!("📋 [BACKEND] Settings: mode={}, language={}", settings.mode, settings.language);
+    
     // Process files and split if necessary
     let mut processed_files = Vec::new();
 
-    for file in files {
+    for (index, file) in files.iter().enumerate() {
+        println!("🎬 [BACKEND] Processing file {}/{}: {}", index + 1, files.len(), file.name);
         match split_video_if_needed(&file.path).await {
             Ok(segments) => {
                 if segments.len() > 1 {
-                    // Video was split into multiple segments
+                    println!("✂️ [BACKEND] Video split into {} segments", segments.len());
                     for segment in segments {
                         processed_files.push(segment);
                     }
                 } else {
-                    // Video was not split (under 1 hour)
-                    processed_files.push(file.path);
+                    println!("✅ [BACKEND] Video is under 1 hour, no splitting needed");
+                    processed_files.push(file.path.clone());
                 }
             }
-            Err(e) => return Err(format!("Failed to process file {}: {}", file.name, e)),
+            Err(e) => {
+                println!("❌ [BACKEND] Failed to process file {}: {}", file.name, e);
+                return Err(format!("Failed to process file {}: {}", file.name, e));
+            }
         }
     }
 
     // Upload files to Gemini API
     let mut file_uris = Vec::new();
+    println!("☁️ [BACKEND] Starting upload of {} processed files to Gemini API", processed_files.len());
 
-    for file_path in processed_files {
-        match upload_to_gemini(&file_path, &settings.gemini_api_key).await {
-            Ok(uri) => file_uris.push(uri),
-            Err(e) => return Err(format!("Failed to upload file {}: {}", file_path, e)),
+    for (index, file_path) in processed_files.iter().enumerate() {
+        println!("📤 [BACKEND] Uploading file {}/{}: {}", index + 1, processed_files.len(), file_path);
+        match upload_to_gemini(file_path, &settings.gemini_api_key).await {
+            Ok(uri) => {
+                println!("✅ [BACKEND] Successfully uploaded file, URI: {}", uri);
+                file_uris.push(uri);
+            }
+            Err(e) => {
+                println!("❌ [BACKEND] Failed to upload file {}: {}", file_path, e);
+                return Err(format!("Failed to upload file {}: {}", file_path, e));
+            }
         }
     }
 
     // Generate documents for each file/segment
     let mut documents = Vec::new();
+    println!("🤖 [BACKEND] Starting document generation for {} uploaded files", file_uris.len());
 
-    for file_uri in file_uris {
+    for (index, file_uri) in file_uris.iter().enumerate() {
+        println!("📝 [BACKEND] Generating document {}/{} for URI: {}", index + 1, file_uris.len(), file_uri);
         match generate_with_gemini(
-            &[file_uri],
+            &[file_uri.clone()],
             &settings.mode,
             &settings.language,
             &settings.gemini_api_key,
         )
         .await
         {
-            Ok(document) => documents.push(document),
-            Err(e) => return Err(format!("Failed to generate document for file: {}", e)),
+            Ok(document) => {
+                println!("✅ [BACKEND] Successfully generated document {}/{} (length: {})", index + 1, file_uris.len(), document.len());
+                documents.push(document);
+            }
+            Err(e) => {
+                println!("❌ [BACKEND] Failed to generate document for file {}: {}", file_uri, e);
+                return Err(format!("Failed to generate document for file: {}", e));
+            }
         }
     }
 
     // Integrate multiple documents if necessary
     let final_document = if documents.len() > 1 {
+        println!("🔗 [BACKEND] Integrating {} documents into final document", documents.len());
         match integrate_documents(
             &documents,
             &settings.mode,
@@ -195,17 +219,26 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings) -> Resu
         )
         .await
         {
-            Ok(integrated) => integrated,
-            Err(e) => return Err(format!("Failed to integrate documents: {}", e)),
+            Ok(integrated) => {
+                println!("✅ [BACKEND] Successfully integrated documents (final length: {})", integrated.len());
+                integrated
+            }
+            Err(e) => {
+                println!("❌ [BACKEND] Failed to integrate documents: {}", e);
+                return Err(format!("Failed to integrate documents: {}", e));
+            }
         }
     } else {
+        println!("📄 [BACKEND] Single document, no integration needed");
         documents.into_iter().next().unwrap_or_default()
     };
 
+    println!("🎉 [BACKEND] Document generation completed successfully (final length: {})", final_document.len());
     Ok(final_document)
 }
 
 async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
+    println!("📂 [UPLOAD] Starting upload for file: {}", file_path);
     let client = reqwest::Client::new();
     let file_data = fs::read(file_path)?;
     let file_size = file_data.len();
@@ -215,8 +248,11 @@ async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
         .unwrap_or("unnamed_video")
         .to_string();
     let mime_type = get_mime_type(file_path);
+    
+    println!("📊 [UPLOAD] File info - Name: {}, Size: {} bytes, MIME: {}", file_name_for_display, file_size, mime_type);
 
     // 1. Start resumable upload session
+    println!("🌐 [UPLOAD] Step 1: Starting resumable upload session");
     let start_request_body = serde_json::json!({
         "file": {
             "display_name": file_name_for_display
@@ -238,18 +274,28 @@ async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
         .await?;
 
     if !start_response.status().is_success() {
+        let error_text = start_response.text().await?;
+        println!("❌ [UPLOAD] Failed to start resumable upload: {}", error_text);
         return Err(anyhow::anyhow!(
             "Failed to start resumable upload: {}",
-            start_response.text().await?
+            error_text
         ));
     }
 
     let upload_url = match start_response.headers().get("X-Goog-Upload-URL") {
-        Some(url) => url.to_str()?.to_string(),
-        None => return Err(anyhow::anyhow!("Did not receive upload URL")),
+        Some(url) => {
+            let url_str = url.to_str()?.to_string();
+            println!("✅ [UPLOAD] Received upload URL: {}", url_str);
+            url_str
+        }
+        None => {
+            println!("❌ [UPLOAD] Did not receive upload URL in response headers");
+            return Err(anyhow::anyhow!("Did not receive upload URL"));
+        }
     };
 
     // 2. Upload the file bytes
+    println!("📤 [UPLOAD] Step 2: Uploading file bytes ({} bytes)", file_size);
     let upload_response = client
         .post(&upload_url)
         .header("Content-Length", file_size.to_string())
@@ -260,20 +306,28 @@ async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
         .await?;
 
     if !upload_response.status().is_success() {
+        let error_text = upload_response.text().await?;
+        println!("❌ [UPLOAD] Failed to upload file content: {}", error_text);
         return Err(anyhow::anyhow!(
             "Failed to upload file content: {}",
-            upload_response.text().await?
+            error_text
         ));
     }
 
+    println!("✅ [UPLOAD] File upload completed successfully");
     let upload_info: GeminiUploadResponse = upload_response.json().await?;
     let file_name_on_server = upload_info.file.name.clone();
+    println!("📋 [UPLOAD] File registered on server as: {}", file_name_on_server);
 
     // 3. Poll for file processing to complete.
+    println!("⏳ [UPLOAD] Step 3: Waiting for file processing to complete...");
     let mut retry_count = 0;
     let max_retries = 60; // 最大10分間待機
 
     loop {
+        retry_count += 1;
+        println!("🔄 [UPLOAD] Checking file status (attempt {}/{})", retry_count, max_retries);
+        
         let get_response = client
             .get(format!(
                 "https://generativelanguage.googleapis.com/v1beta/{}?key={}",
@@ -283,42 +337,50 @@ async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
             .await?;
 
         if !get_response.status().is_success() {
+            let error_text = get_response.text().await?;
+            println!("❌ [UPLOAD] Failed to get file status: {}", error_text);
             return Err(anyhow::anyhow!(
                 "Failed to get file status: {}",
-                get_response.text().await?
+                error_text
             ));
         }
 
         let file_info: GeminiFileInfo = get_response.json().await?;
 
-        if let Some(state) = file_info.state {
+        if let Some(state) = &file_info.state {
+            println!("📊 [UPLOAD] File state: {}", state);
             match state.as_str() {
                 "ACTIVE" => {
                     if let Some(uri) = file_info.uri {
+                        println!("🎉 [UPLOAD] File processing completed! URI: {}", uri);
                         return Ok(uri);
                     } else {
+                        println!("❌ [UPLOAD] File is ACTIVE but URI is missing");
                         return Err(anyhow::anyhow!("File is ACTIVE but URI is missing."));
                     }
                 }
                 "PROCESSING" => {
-                    retry_count += 1;
                     if retry_count > max_retries {
+                        println!("⏰ [UPLOAD] File processing timeout after {} attempts", max_retries);
                         return Err(anyhow::anyhow!("File processing timeout."));
                     }
+                    println!("⏳ [UPLOAD] File still processing, waiting 10 seconds...");
                     sleep(Duration::from_secs(10)).await;
                     continue;
                 }
                 "FAILED" => {
+                    println!("❌ [UPLOAD] File processing failed on the server");
                     return Err(anyhow::anyhow!("File processing failed on the server."));
                 }
                 _ => {
+                    println!("❓ [UPLOAD] Unknown file state received: {}", state);
                     return Err(anyhow::anyhow!("Unknown file state received: {}", state));
                 }
             }
         } else {
-            // stateフィールドがない場合も処理中と見なす
-            retry_count += 1;
+            println!("📊 [UPLOAD] No state field in response, assuming still processing");
             if retry_count > max_retries {
+                println!("⏰ [UPLOAD] File processing timeout (no state) after {} attempts", max_retries);
                 return Err(anyhow::anyhow!("File processing timeout (no state)."));
             }
             sleep(Duration::from_secs(5)).await;
@@ -332,6 +394,8 @@ async fn generate_with_gemini(
     language: &str,
     api_key: &str,
 ) -> Result<String> {
+    println!("🤖 [GENERATE] Starting document generation with Gemini API");
+    println!("📋 [GENERATE] Mode: {}, Language: {}, Files: {}", mode, language, file_uris.len());
     let client = reqwest::Client::new();
 
     let language_instruction = match language {
@@ -378,6 +442,7 @@ async fn generate_with_gemini(
         contents: vec![GeminiContent { parts }],
     };
 
+    println!("🌐 [GENERATE] Sending request to Gemini API...");
     let response = client
         .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-06-05:generateContent?key={}", api_key))
         .json(&request)
@@ -385,17 +450,21 @@ async fn generate_with_gemini(
         .await?;
 
     if response.status().is_success() {
+        println!("✅ [GENERATE] Received successful response from Gemini API");
         let gemini_response: GeminiResponse = response.json().await?;
         if let Some(candidate) = gemini_response.candidates.first() {
             if let Some(part) = candidate.content.parts.first() {
                 if let GeminiPart::Text { text } = part {
+                    println!("📝 [GENERATE] Generated document length: {} characters", text.len());
                     return Ok(text.clone());
                 }
             }
         }
+        println!("❌ [GENERATE] No text content found in response");
         Err(anyhow::anyhow!("No text content in response"))
     } else {
         let error_text = response.text().await?;
+        println!("❌ [GENERATE] API request failed: {}", error_text);
         Err(anyhow::anyhow!("API request failed: {}", error_text))
     }
 }

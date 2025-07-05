@@ -32,11 +32,14 @@ function App() {
   }, []);
 
   const handleFileSelect = async () => {
+    console.log("📁 Starting file selection...");
     try {
       const files = await invoke<VideoFile[]>("select_video_files");
+      console.log(`✅ Selected ${files.length} files:`, files.map(f => f.name));
       setSelectedFiles(files);
     } catch (error) {
-      console.error("Error selecting files:", error);
+      console.error("❌ Error selecting files:", error);
+      console.error("📊 File selection error details:", JSON.stringify(error, null, 2));
     }
   };
 
@@ -45,47 +48,65 @@ function App() {
   };
 
   const handleGenerateDocument = async () => {
+    console.log("🚀 Starting document generation process");
+    
     if (selectedFiles.length === 0) {
-      console.error("No video files selected");
+      console.error("❌ No video files selected");
       return;
     }
     
     if (!settings.gemini_api_key) {
-      console.error("Gemini API key is not set");
+      console.error("❌ Gemini API key is not set");
       return;
     }
 
+    console.log(`📁 Processing ${selectedFiles.length} files:`, selectedFiles.map(f => f.name));
+    console.log("⚙️ Settings:", { mode: settings.mode, language: settings.language });
+
     setIsProcessing(true);
     try {
+      console.log("📤 Sending request to backend...");
       const result = await invoke<string>("generate_document", {
         files: selectedFiles,
         settings: settings
       });
+      console.log("✅ Document generation completed successfully");
+      console.log("📄 Generated document length:", result.length);
       setGeneratedDocument(result);
     } catch (error) {
-      console.error("Error generating document:", error);
+      console.error("❌ Error generating document:", error);
+      console.error("📊 Error details:", JSON.stringify(error, null, 2));
     } finally {
       setIsProcessing(false);
+      console.log("🏁 Document generation process finished");
     }
   };
 
   const handleSaveSettings = async () => {
+    console.log("💾 Saving settings...", { mode: settings.mode, language: settings.language });
     try {
       await invoke("save_settings", { settings });
+      console.log("✅ Settings saved successfully");
       setShowSettings(false);
     } catch (error) {
-      console.error("Error saving settings:", error);
+      console.error("❌ Error saving settings:", error);
+      console.error("📊 Settings save error details:", JSON.stringify(error, null, 2));
     }
   };
 
   const loadSettings = async () => {
+    console.log("📖 Loading settings...");
     try {
       const savedSettings = await invoke<AppSettings | null>("load_settings");
       if (savedSettings) {
+        console.log("✅ Settings loaded successfully:", { mode: savedSettings.mode, language: savedSettings.language });
         setSettings(savedSettings);
+      } else {
+        console.log("ℹ️ No saved settings found, using defaults");
       }
     } catch (error) {
-      console.error("Error loading settings:", error);
+      console.error("❌ Error loading settings:", error);
+      console.error("📊 Settings load error details:", JSON.stringify(error, null, 2));
     }
   };
 
