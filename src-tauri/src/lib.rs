@@ -144,14 +144,24 @@ async fn select_video_files(app: tauri::AppHandle) -> Result<Vec<VideoFile>, Str
 }
 
 #[tauri::command]
-async fn generate_document(files: Vec<VideoFile>, settings: AppSettings, app: tauri::AppHandle) -> Result<String, String> {
-    println!("🚀 [BACKEND] Starting generate_document with {} files", files.len());
-    println!("📋 [BACKEND] Settings: mode={}, language={}", settings.mode, settings.language);
-    
+async fn generate_document(
+    files: Vec<VideoFile>,
+    settings: AppSettings,
+    app: tauri::AppHandle,
+) -> Result<String, String> {
+    println!(
+        "🚀 [BACKEND] Starting generate_document with {} files",
+        files.len()
+    );
+    println!(
+        "📋 [BACKEND] Settings: mode={}, language={}",
+        settings.mode, settings.language
+    );
+
     // Calculate total steps for progress tracking
     let total_steps = files.len() * 3 + if files.len() > 1 { 1 } else { 0 }; // Split, Upload, Generate per file + Integration
     let mut current_step = 0;
-    
+
     // Helper function to emit progress
     let emit_progress = |app_ref: &tauri::AppHandle, step: usize, total: usize, message: String| {
         let progress = ProgressUpdate {
@@ -159,24 +169,47 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings, app: ta
             step,
             total_steps: total,
         };
-        println!("📡 [EVENT] Emitting progress: step={}/{}, message={}", step, total, message);
+        println!(
+            "📡 [EVENT] Emitting progress: step={}/{}, message={}",
+            step, total, message
+        );
         if let Err(e) = app_ref.emit("progress_update", &progress) {
             println!("❌ [EVENT] Failed to emit progress event: {}", e);
         } else {
             println!("✅ [EVENT] Successfully emitted progress event");
         }
     };
-    
-    emit_progress(&app, current_step, total_steps, "ドキュメント生成を開始しています...".to_string());
-    
+
+    emit_progress(
+        &app,
+        current_step,
+        total_steps,
+        "ドキュメント生成を開始しています...".to_string(),
+    );
+
     // Process files and split if necessary
     let mut processed_files = Vec::new();
 
     for (index, file) in files.iter().enumerate() {
         current_step += 1;
-        emit_progress(&app, current_step, total_steps, format!("ファイル処理中 ({}/{}): {}", index + 1, files.len(), file.name));
-        
-        println!("🎬 [BACKEND] Processing file {}/{}: {}", index + 1, files.len(), file.name);
+        emit_progress(
+            &app,
+            current_step,
+            total_steps,
+            format!(
+                "ファイル処理中 ({}/{}): {}",
+                index + 1,
+                files.len(),
+                file.name
+            ),
+        );
+
+        println!(
+            "🎬 [BACKEND] Processing file {}/{}: {}",
+            index + 1,
+            files.len(),
+            file.name
+        );
         match split_video_if_needed(&file.path).await {
             Ok(segments) => {
                 if segments.len() > 1 {
@@ -198,15 +231,44 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings, app: ta
 
     // Upload files to Gemini API
     let mut file_uris = Vec::new();
-    println!("☁️ [BACKEND] Starting upload of {} processed files to Gemini API", processed_files.len());
+    println!(
+        "☁️ [BACKEND] Starting upload of {} processed files to Gemini API",
+        processed_files.len()
+    );
 
     for (index, file_path) in processed_files.iter().enumerate() {
         current_step += 1;
-        let file_name = Path::new(file_path).file_name().and_then(|n| n.to_str()).unwrap_or("不明なファイル");
-        emit_progress(&app, current_step, total_steps, format!("ファイルアップロード中 ({}/{}): {}", index + 1, processed_files.len(), file_name));
-        
-        println!("📤 [BACKEND] Uploading file {}/{}: {}", index + 1, processed_files.len(), file_path);
-        match upload_to_gemini_with_progress(file_path, &settings.gemini_api_key, &app, current_step, total_steps).await {
+        let file_name = Path::new(file_path)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("不明なファイル");
+        emit_progress(
+            &app,
+            current_step,
+            total_steps,
+            format!(
+                "ファイルアップロード中 ({}/{}): {}",
+                index + 1,
+                processed_files.len(),
+                file_name
+            ),
+        );
+
+        println!(
+            "📤 [BACKEND] Uploading file {}/{}: {}",
+            index + 1,
+            processed_files.len(),
+            file_path
+        );
+        match upload_to_gemini_with_progress(
+            file_path,
+            &settings.gemini_api_key,
+            &app,
+            current_step,
+            total_steps,
+        )
+        .await
+        {
             Ok(uri) => {
                 println!("✅ [BACKEND] Successfully uploaded file, URI: {}", uri);
                 file_uris.push(uri);
@@ -220,13 +282,26 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings, app: ta
 
     // Generate documents for each file/segment
     let mut documents = Vec::new();
-    println!("🤖 [BACKEND] Starting document generation for {} uploaded files", file_uris.len());
+    println!(
+        "🤖 [BACKEND] Starting document generation for {} uploaded files",
+        file_uris.len()
+    );
 
     for (index, file_uri) in file_uris.iter().enumerate() {
         current_step += 1;
-        emit_progress(&app, current_step, total_steps, format!("ドキュメント生成中 ({}/{})", index + 1, file_uris.len()));
-        
-        println!("📝 [BACKEND] Generating document {}/{} for URI: {}", index + 1, file_uris.len(), file_uri);
+        emit_progress(
+            &app,
+            current_step,
+            total_steps,
+            format!("ドキュメント生成中 ({}/{})", index + 1, file_uris.len()),
+        );
+
+        println!(
+            "📝 [BACKEND] Generating document {}/{} for URI: {}",
+            index + 1,
+            file_uris.len(),
+            file_uri
+        );
         match generate_with_gemini_with_progress(
             &[file_uri.clone()],
             &settings.mode,
@@ -239,11 +314,19 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings, app: ta
         .await
         {
             Ok(document) => {
-                println!("✅ [BACKEND] Successfully generated document {}/{} (length: {})", index + 1, file_uris.len(), document.len());
+                println!(
+                    "✅ [BACKEND] Successfully generated document {}/{} (length: {})",
+                    index + 1,
+                    file_uris.len(),
+                    document.len()
+                );
                 documents.push(document);
             }
             Err(e) => {
-                println!("❌ [BACKEND] Failed to generate document for file {}: {}", file_uri, e);
+                println!(
+                    "❌ [BACKEND] Failed to generate document for file {}: {}",
+                    file_uri, e
+                );
                 return Err(format!("Failed to generate document for file: {}", e));
             }
         }
@@ -252,9 +335,17 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings, app: ta
     // Integrate multiple documents if necessary
     let final_document = if documents.len() > 1 {
         current_step += 1;
-        emit_progress(&app, current_step, total_steps, "複数のドキュメントを統合中...".to_string());
-        
-        println!("🔗 [BACKEND] Integrating {} documents into final document", documents.len());
+        emit_progress(
+            &app,
+            current_step,
+            total_steps,
+            "複数のドキュメントを統合中...".to_string(),
+        );
+
+        println!(
+            "🔗 [BACKEND] Integrating {} documents into final document",
+            documents.len()
+        );
         match integrate_documents(
             &documents,
             &settings.mode,
@@ -264,7 +355,10 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings, app: ta
         .await
         {
             Ok(integrated) => {
-                println!("✅ [BACKEND] Successfully integrated documents (final length: {})", integrated.len());
+                println!(
+                    "✅ [BACKEND] Successfully integrated documents (final length: {})",
+                    integrated.len()
+                );
                 integrated
             }
             Err(e) => {
@@ -277,26 +371,43 @@ async fn generate_document(files: Vec<VideoFile>, settings: AppSettings, app: ta
         documents.into_iter().next().unwrap_or_default()
     };
 
-    emit_progress(&app, total_steps, total_steps, "ドキュメント生成が完了しました！".to_string());
-    println!("🎉 [BACKEND] Document generation completed successfully (final length: {})", final_document.len());
+    emit_progress(
+        &app,
+        total_steps,
+        total_steps,
+        "ドキュメント生成が完了しました！".to_string(),
+    );
+    println!(
+        "🎉 [BACKEND] Document generation completed successfully (final length: {})",
+        final_document.len()
+    );
     Ok(final_document)
 }
 
-async fn upload_to_gemini_with_progress(file_path: &str, api_key: &str, app: &tauri::AppHandle, base_step: usize, total_steps: usize) -> Result<String> {
+async fn upload_to_gemini_with_progress(
+    file_path: &str,
+    api_key: &str,
+    app: &tauri::AppHandle,
+    base_step: usize,
+    total_steps: usize,
+) -> Result<String> {
     let emit_progress = |message: String| {
         let progress = ProgressUpdate {
             message: message.clone(),
             step: base_step,
             total_steps,
         };
-        println!("📡 [UPLOAD_EVENT] Emitting progress: step={}/{}, message={}", base_step, total_steps, message);
+        println!(
+            "📡 [UPLOAD_EVENT] Emitting progress: step={}/{}, message={}",
+            base_step, total_steps, message
+        );
         if let Err(e) = app.emit("progress_update", &progress) {
             println!("❌ [UPLOAD_EVENT] Failed to emit progress event: {}", e);
         } else {
             println!("✅ [UPLOAD_EVENT] Successfully emitted progress event");
         }
     };
-    
+
     // Also create a detailed progress emitter that updates the main progress message
     let emit_detailed_progress = |detail_message: String| {
         let progress = ProgressUpdate {
@@ -308,17 +419,21 @@ async fn upload_to_gemini_with_progress(file_path: &str, api_key: &str, app: &ta
             println!("❌ [UPLOAD_EVENT] Failed to emit detailed progress: {}", e);
         }
     };
-    
+
     upload_to_gemini_internal(file_path, api_key, emit_detailed_progress).await
 }
 
-async fn upload_to_gemini_internal<F>(file_path: &str, api_key: &str, emit_progress: F) -> Result<String> 
-where 
+async fn upload_to_gemini_internal<F>(
+    file_path: &str,
+    api_key: &str,
+    emit_progress: F,
+) -> Result<String>
+where
     F: Fn(String),
 {
     println!("📂 [UPLOAD] Starting upload for file: {}", file_path);
     emit_progress("ファイルを読み込み中...".to_string());
-    
+
     let client = reqwest::Client::new();
     let file_data = fs::read(file_path)?;
     let file_size = file_data.len();
@@ -328,13 +443,16 @@ where
         .unwrap_or("unnamed_video")
         .to_string();
     let mime_type = get_mime_type(file_path);
-    
-    println!("📊 [UPLOAD] File info - Name: {}, Size: {} bytes, MIME: {}", file_name_for_display, file_size, mime_type);
+
+    println!(
+        "📊 [UPLOAD] File info - Name: {}, Size: {} bytes, MIME: {}",
+        file_name_for_display, file_size, mime_type
+    );
 
     // 1. Start resumable upload session
     println!("🌐 [UPLOAD] Step 1: Starting resumable upload session");
     emit_progress("アップロードセッションを開始中...".to_string());
-    
+
     let start_request_body = serde_json::json!({
         "file": {
             "display_name": file_name_for_display
@@ -357,7 +475,10 @@ where
 
     if !start_response.status().is_success() {
         let error_text = start_response.text().await?;
-        println!("❌ [UPLOAD] Failed to start resumable upload: {}", error_text);
+        println!(
+            "❌ [UPLOAD] Failed to start resumable upload: {}",
+            error_text
+        );
         return Err(anyhow::anyhow!(
             "Failed to start resumable upload: {}",
             error_text
@@ -377,9 +498,15 @@ where
     };
 
     // 2. Upload the file bytes
-    println!("📤 [UPLOAD] Step 2: Uploading file bytes ({} bytes)", file_size);
-    emit_progress(format!("ファイルをアップロード中... ({:.1} MB)", file_size as f64 / 1_000_000.0));
-    
+    println!(
+        "📤 [UPLOAD] Step 2: Uploading file bytes ({} bytes)",
+        file_size
+    );
+    emit_progress(format!(
+        "ファイルをアップロード中... ({:.1} MB)",
+        file_size as f64 / 1_000_000.0
+    ));
+
     let upload_response = client
         .post(&upload_url)
         .header("Content-Length", file_size.to_string())
@@ -401,20 +528,29 @@ where
     println!("✅ [UPLOAD] File upload completed successfully");
     let upload_info: GeminiUploadResponse = upload_response.json().await?;
     let file_name_on_server = upload_info.file.name.clone();
-    println!("📋 [UPLOAD] File registered on server as: {}", file_name_on_server);
+    println!(
+        "📋 [UPLOAD] File registered on server as: {}",
+        file_name_on_server
+    );
 
     // 3. Poll for file processing to complete.
     println!("⏳ [UPLOAD] Step 3: Waiting for file processing to complete...");
     emit_progress("ファイル処理の完了を待機中...".to_string());
-    
+
     let mut retry_count = 0;
     let max_retries = 60; // 最大10分間待機
 
     loop {
         retry_count += 1;
-        emit_progress(format!("ファイル処理状況を確認中... ({}/{}回目)", retry_count, max_retries));
-        println!("🔄 [UPLOAD] Checking file status (attempt {}/{})", retry_count, max_retries);
-        
+        emit_progress(format!(
+            "ファイル処理状況を確認中... ({}/{}回目)",
+            retry_count, max_retries
+        ));
+        println!(
+            "🔄 [UPLOAD] Checking file status (attempt {}/{})",
+            retry_count, max_retries
+        );
+
         let get_response = client
             .get(format!(
                 "https://generativelanguage.googleapis.com/v1beta/{}?key={}",
@@ -426,10 +562,7 @@ where
         if !get_response.status().is_success() {
             let error_text = get_response.text().await?;
             println!("❌ [UPLOAD] Failed to get file status: {}", error_text);
-            return Err(anyhow::anyhow!(
-                "Failed to get file status: {}",
-                error_text
-            ));
+            return Err(anyhow::anyhow!("Failed to get file status: {}", error_text));
         }
 
         let file_info: GeminiFileInfo = get_response.json().await?;
@@ -443,18 +576,28 @@ where
                         println!("🎉 [UPLOAD] File processing completed! URI: {}", uri);
                         return Ok(uri);
                     } else {
-                        emit_progress("エラー: ファイルは処理されましたがURIが見つかりません".to_string());
+                        emit_progress(
+                            "エラー: ファイルは処理されましたがURIが見つかりません".to_string(),
+                        );
                         println!("❌ [UPLOAD] File is ACTIVE but URI is missing");
                         return Err(anyhow::anyhow!("File is ACTIVE but URI is missing."));
                     }
                 }
                 "PROCESSING" => {
                     if retry_count > max_retries {
-                        emit_progress("タイムアウト: ファイル処理に時間がかかりすぎています".to_string());
-                        println!("⏰ [UPLOAD] File processing timeout after {} attempts", max_retries);
+                        emit_progress(
+                            "タイムアウト: ファイル処理に時間がかかりすぎています".to_string(),
+                        );
+                        println!(
+                            "⏰ [UPLOAD] File processing timeout after {} attempts",
+                            max_retries
+                        );
                         return Err(anyhow::anyhow!("File processing timeout."));
                     }
-                    emit_progress(format!("ファイル処理中... 10秒後に再確認 ({}/{}回目)", retry_count, max_retries));
+                    emit_progress(format!(
+                        "ファイル処理中... 10秒後に再確認 ({}/{}回目)",
+                        retry_count, max_retries
+                    ));
                     println!("⏳ [UPLOAD] File still processing, waiting 10 seconds...");
                     sleep(Duration::from_secs(10)).await;
                     continue;
@@ -474,10 +617,16 @@ where
             println!("📊 [UPLOAD] No state field in response, assuming still processing");
             if retry_count > max_retries {
                 emit_progress("タイムアウト: ファイル状態の確認に失敗しました".to_string());
-                println!("⏰ [UPLOAD] File processing timeout (no state) after {} attempts", max_retries);
+                println!(
+                    "⏰ [UPLOAD] File processing timeout (no state) after {} attempts",
+                    max_retries
+                );
                 return Err(anyhow::anyhow!("File processing timeout (no state)."));
             }
-            emit_progress(format!("状態不明のためファイル処理中と仮定... ({}/{}回目)", retry_count, max_retries));
+            emit_progress(format!(
+                "状態不明のためファイル処理中と仮定... ({}/{}回目)",
+                retry_count, max_retries
+            ));
             sleep(Duration::from_secs(5)).await;
         }
     }
@@ -502,7 +651,7 @@ async fn generate_with_gemini_with_progress(
             println!("❌ [GENERATE_EVENT] Failed to emit progress: {}", e);
         }
     };
-    
+
     generate_with_gemini_internal(file_uris, mode, language, api_key, emit_progress).await
 }
 
@@ -521,12 +670,17 @@ async fn generate_with_gemini_internal<F>(
     language: &str,
     api_key: &str,
     emit_progress: F,
-) -> Result<String> 
+) -> Result<String>
 where
     F: Fn(String),
 {
     println!("🤖 [GENERATE] Starting document generation with Gemini API");
-    println!("📋 [GENERATE] Mode: {}, Language: {}, Files: {}", mode, language, file_uris.len());
+    println!(
+        "📋 [GENERATE] Mode: {}, Language: {}, Files: {}",
+        mode,
+        language,
+        file_uris.len()
+    );
     emit_progress("AIによるドキュメント生成を準備中...".to_string());
     let client = reqwest::Client::new();
 
@@ -589,7 +743,10 @@ where
         if let Some(candidate) = gemini_response.candidates.first() {
             if let Some(part) = candidate.content.parts.first() {
                 if let GeminiPart::Text { text } = part {
-                    println!("📝 [GENERATE] Generated document length: {} characters", text.len());
+                    println!(
+                        "📝 [GENERATE] Generated document length: {} characters",
+                        text.len()
+                    );
                     emit_progress(format!("ドキュメント生成完了！ ({}文字)", text.len()));
                     return Ok(text.clone());
                 }
@@ -793,7 +950,7 @@ async fn integrate_documents(
     };
 
     let response = client
-        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={}", api_key))
+        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-06-05:generateContent?key={}", api_key))
         .json(&request)
         .send()
         .await?;
