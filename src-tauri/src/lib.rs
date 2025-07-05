@@ -1,9 +1,10 @@
-use std::fs;
-use std::process::Command;
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
-use tauri::Manager;
 use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use std::fs;
+use std::path::{Path, PathBuf};
+use std::process::Command;
+use tauri::Manager;
+use tokio::time::{sleep, Duration};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct VideoFile {
@@ -16,6 +17,12 @@ struct VideoFile {
 struct AppSettings {
     mode: String,
     gemini_api_key: String,
+    #[serde(default = "default_language")]
+    language: String,
+}
+
+fn default_language() -> String {
+    "japanese".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -59,34 +66,50 @@ struct GeminiUploadResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct GeminiFileInfo {
     name: String,
-    display_name: String,
-    mime_type: String,
-    size_bytes: String,
-    create_time: String,
-    update_time: String,
-    expiration_time: String,
-    sha256_hash: String,
-    uri: String,
+    #[serde(default)]
+    display_name: Option<String>,
+    #[serde(default)]
+    mime_type: Option<String>,
+    #[serde(default)]
+    size_bytes: Option<String>,
+    #[serde(default)]
+    create_time: Option<String>,
+    #[serde(default)]
+    update_time: Option<String>,
+    #[serde(default)]
+    expiration_time: Option<String>,
+    #[serde(default)]
+    sha256_hash: Option<String>,
+    #[serde(default)]
+    uri: Option<String>,
+    #[serde(default)]
+    state: Option<String>,
 }
-
 
 #[tauri::command]
 async fn select_video_files(app: tauri::AppHandle) -> Result<Vec<VideoFile>, String> {
     use tauri_plugin_dialog::DialogExt;
     use tokio::sync::oneshot;
-    
+
     let (tx, rx) = oneshot::channel();
-    
+
     app.dialog()
         .file()
-        .add_filter("Video files", &["mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "3gp", "mpg", "mpeg"])
+        .add_filter(
+            "Video files",
+            &[
+                "mp4", "mov", "avi", "mkv", "wmv", "flv", "webm", "3gp", "mpg", "mpeg",
+            ],
+        )
         .set_title("Select video files")
         .pick_files(move |files| {
             let _ = tx.send(files);
         });
-    
-    let files = rx.await.map_err(|e| format!("Failed to receive dialog result: {}", e))?;
-    
+
+    let files = rx
+        .await
+        .map_err(|e| format!("Failed to receive dialog result: {}", e))?;
+
     match files {
         Some(paths) => {
             let mut video_files = Vec::new();
@@ -94,11 +117,12 @@ async fn select_video_files(app: tauri::AppHandle) -> Result<Vec<VideoFile>, Str
                 let path_str = file_path.to_string();
                 let path_buf = std::path::PathBuf::from(&path_str);
                 if let Ok(metadata) = fs::metadata(&path_buf) {
-                    let file_name = path_buf.file_name()
+                    let file_name = path_buf
+                        .file_name()
                         .and_then(|name| name.to_str())
                         .unwrap_or("Unknown")
                         .to_string();
-                    
+
                     video_files.push(VideoFile {
                         path: path_str,
                         name: file_name,
@@ -113,14 +137,10 @@ async fn select_video_files(app: tauri::AppHandle) -> Result<Vec<VideoFile>, Str
 }
 
 #[tauri::command]
-async fn generate_document(
-    files: Vec<VideoFile>,
-    mode: String,
-    api_key: String,
-) -> Result<String, String> {
+async fn generate_document(files: Vec<VideoFile>, settings: AppSettings) -> Result<String, String> {
     // Process files and split if necessary
     let mut processed_files = Vec::new();
-    
+
     for file in files {
         match split_video_if_needed(&file.path).await {
             Ok(segments) => {
@@ -137,84 +157,198 @@ async fn generate_document(
             Err(e) => return Err(format!("Failed to process file {}: {}", file.name, e)),
         }
     }
-    
+
     // Upload files to Gemini API
     let mut file_uris = Vec::new();
-    
+
     for file_path in processed_files {
-        match upload_to_gemini(&file_path, &api_key).await {
+        match upload_to_gemini(&file_path, &settings.gemini_api_key).await {
             Ok(uri) => file_uris.push(uri),
             Err(e) => return Err(format!("Failed to upload file {}: {}", file_path, e)),
         }
     }
-    
+
     // Generate documents for each file/segment
     let mut documents = Vec::new();
-    
+
     for file_uri in file_uris {
-        match generate_with_gemini(&[file_uri], &mode, &api_key).await {
+        match generate_with_gemini(
+            &[file_uri],
+            &settings.mode,
+            &settings.language,
+            &settings.gemini_api_key,
+        )
+        .await
+        {
             Ok(document) => documents.push(document),
             Err(e) => return Err(format!("Failed to generate document for file: {}", e)),
         }
     }
-    
+
     // Integrate multiple documents if necessary
     let final_document = if documents.len() > 1 {
-        match integrate_documents(&documents, &mode, &api_key).await {
+        match integrate_documents(
+            &documents,
+            &settings.mode,
+            &settings.language,
+            &settings.gemini_api_key,
+        )
+        .await
+        {
             Ok(integrated) => integrated,
             Err(e) => return Err(format!("Failed to integrate documents: {}", e)),
         }
     } else {
         documents.into_iter().next().unwrap_or_default()
     };
-    
+
     Ok(final_document)
 }
 
 async fn upload_to_gemini(file_path: &str, api_key: &str) -> Result<String> {
     let client = reqwest::Client::new();
     let file_data = fs::read(file_path)?;
-    let file_name = std::path::Path::new(file_path)
+    let file_size = file_data.len();
+    let file_name_for_display = Path::new(file_path)
         .file_name()
-        .and_then(|name| name.to_str())
-        .unwrap_or("video");
-    
-    // Determine MIME type based on file extension
+        .and_then(|s| s.to_str())
+        .unwrap_or("unnamed_video")
+        .to_string();
     let mime_type = get_mime_type(file_path);
-    
-    let form = reqwest::multipart::Form::new()
-        .part("file", reqwest::multipart::Part::bytes(file_data)
-            .file_name(file_name.to_string())
-            .mime_str(&mime_type)?);
-    
-    let response = client
-        .post(format!("https://generativelanguage.googleapis.com/upload/v1beta/files?key={}", api_key))
-        .multipart(form)
+
+    // 1. Start resumable upload session
+    let start_request_body = serde_json::json!({
+        "file": {
+            "display_name": file_name_for_display
+        }
+    });
+
+    let start_response = client
+        .post(format!(
+            "https://generativelanguage.googleapis.com/upload/v1beta/files?key={}",
+            api_key
+        ))
+        .header("X-Goog-Upload-Protocol", "resumable")
+        .header("X-Goog-Upload-Command", "start")
+        .header("X-Goog-Upload-Header-Content-Length", file_size.to_string())
+        .header("X-Goog-Upload-Header-Content-Type", &mime_type)
+        .header("Content-Type", "application/json")
+        .json(&start_request_body)
         .send()
         .await?;
-    
-    if response.status().is_success() {
-        let upload_response: GeminiUploadResponse = response.json().await?;
-        Ok(upload_response.file.uri)
-    } else {
-        let error_text = response.text().await?;
-        Err(anyhow::anyhow!("Upload failed: {}", error_text))
+
+    if !start_response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Failed to start resumable upload: {}",
+            start_response.text().await?
+        ));
+    }
+
+    let upload_url = match start_response.headers().get("X-Goog-Upload-URL") {
+        Some(url) => url.to_str()?.to_string(),
+        None => return Err(anyhow::anyhow!("Did not receive upload URL")),
+    };
+
+    // 2. Upload the file bytes
+    let upload_response = client
+        .post(&upload_url)
+        .header("Content-Length", file_size.to_string())
+        .header("X-Goog-Upload-Offset", "0")
+        .header("X-Goog-Upload-Command", "upload, finalize")
+        .body(file_data)
+        .send()
+        .await?;
+
+    if !upload_response.status().is_success() {
+        return Err(anyhow::anyhow!(
+            "Failed to upload file content: {}",
+            upload_response.text().await?
+        ));
+    }
+
+    let upload_info: GeminiUploadResponse = upload_response.json().await?;
+    let file_name_on_server = upload_info.file.name.clone();
+
+    // 3. Poll for file processing to complete.
+    let mut retry_count = 0;
+    let max_retries = 60; // 最大10分間待機
+
+    loop {
+        let get_response = client
+            .get(format!(
+                "https://generativelanguage.googleapis.com/v1beta/{}?key={}",
+                file_name_on_server, api_key
+            ))
+            .send()
+            .await?;
+
+        if !get_response.status().is_success() {
+            return Err(anyhow::anyhow!(
+                "Failed to get file status: {}",
+                get_response.text().await?
+            ));
+        }
+
+        let file_info: GeminiFileInfo = get_response.json().await?;
+
+        if let Some(state) = file_info.state {
+            match state.as_str() {
+                "ACTIVE" => {
+                    if let Some(uri) = file_info.uri {
+                        return Ok(uri);
+                    } else {
+                        return Err(anyhow::anyhow!("File is ACTIVE but URI is missing."));
+                    }
+                }
+                "PROCESSING" => {
+                    retry_count += 1;
+                    if retry_count > max_retries {
+                        return Err(anyhow::anyhow!("File processing timeout."));
+                    }
+                    sleep(Duration::from_secs(10)).await;
+                    continue;
+                }
+                "FAILED" => {
+                    return Err(anyhow::anyhow!("File processing failed on the server."));
+                }
+                _ => {
+                    return Err(anyhow::anyhow!("Unknown file state received: {}", state));
+                }
+            }
+        } else {
+            // stateフィールドがない場合も処理中と見なす
+            retry_count += 1;
+            if retry_count > max_retries {
+                return Err(anyhow::anyhow!("File processing timeout (no state)."));
+            }
+            sleep(Duration::from_secs(5)).await;
+        }
     }
 }
 
-async fn generate_with_gemini(file_uris: &[String], mode: &str, api_key: &str) -> Result<String> {
+async fn generate_with_gemini(
+    file_uris: &[String],
+    mode: &str,
+    language: &str,
+    api_key: &str,
+) -> Result<String> {
     let client = reqwest::Client::new();
-    
+
+    let language_instruction = match language {
+        "english" => "Please write the document in English",
+        "japanese" | _ => "Please write the document in Japanese",
+    };
+
     let prompt = match mode {
-        "manual" => "Please analyze the uploaded video(s) and create a comprehensive manual document. The document should include:
+        "manual" => format!("Please analyze the uploaded video(s) and create a comprehensive manual document. The document should include:
         
         1. Overview of the content
         2. Step-by-step instructions for all procedures shown
         3. Key points and important notes
         4. Troubleshooting tips where applicable
         
-        Please write the manual in Japanese and format it in a clear, professional manner.",
-        "specification" => "Please analyze the uploaded video(s) and create a detailed specification document. The document should include:
+        {} and format it in a clear, professional manner.", language_instruction),
+        "specification" => format!("Please analyze the uploaded video(s) and create a detailed specification document. The document should include:
         
         1. System overview and architecture
         2. Functional specifications
@@ -223,12 +357,14 @@ async fn generate_with_gemini(file_uris: &[String], mode: &str, api_key: &str) -
         5. Performance criteria
         6. Implementation details
         
-        Please write the specification in Japanese and format it in a clear, professional manner.",
-        _ => "Please analyze the uploaded video(s) and create a comprehensive document based on the content.",
+        {} and format it in a clear, professional manner.", language_instruction),
+        _ => format!("Please analyze the uploaded video(s) and create a comprehensive document based on the content. {}", language_instruction),
     };
-    
-    let mut parts = vec![GeminiPart::Text { text: prompt.to_string() }];
-    
+
+    let mut parts = vec![GeminiPart::Text {
+        text: prompt.to_string(),
+    }];
+
     for uri in file_uris {
         parts.push(GeminiPart::FileData {
             file_data: GeminiFileData {
@@ -237,17 +373,17 @@ async fn generate_with_gemini(file_uris: &[String], mode: &str, api_key: &str) -
             },
         });
     }
-    
+
     let request = GeminiRequest {
         contents: vec![GeminiContent { parts }],
     };
-    
+
     let response = client
-        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={}", api_key))
+        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-06-05:generateContent?key={}", api_key))
         .json(&request)
         .send()
         .await?;
-    
+
     if response.status().is_success() {
         let gemini_response: GeminiResponse = response.json().await?;
         if let Some(candidate) = gemini_response.candidates.first() {
@@ -269,7 +405,7 @@ fn get_mime_type(file_path: &str) -> String {
         .extension()
         .and_then(|ext| ext.to_str())
         .unwrap_or("");
-    
+
     match extension.to_lowercase().as_str() {
         "mp4" => "video/mp4",
         "mov" => "video/quicktime",
@@ -281,22 +417,23 @@ fn get_mime_type(file_path: &str) -> String {
         "3gp" => "video/3gpp",
         "mpg" | "mpeg" => "video/mpeg",
         _ => "video/mp4", // Default
-    }.to_string()
+    }
+    .to_string()
 }
 
 async fn split_video_if_needed(video_path: &str) -> Result<Vec<String>> {
     // Get video duration using ffprobe
     let duration = get_video_duration(video_path).await?;
-    
+
     // If duration is less than 1 hour (3600 seconds), no need to split
     if duration < 3600.0 {
         return Ok(vec![video_path.to_string()]);
     }
-    
+
     // Calculate number of segments needed (each segment should be < 1 hour)
     let segment_duration = 3500.0; // 58 minutes and 20 seconds to be safe
     let num_segments = (duration / segment_duration).ceil() as i32;
-    
+
     let mut segments = Vec::new();
     let temp_dir = tempfile::tempdir()?;
     let file_stem = Path::new(video_path)
@@ -307,24 +444,34 @@ async fn split_video_if_needed(video_path: &str) -> Result<Vec<String>> {
         .extension()
         .and_then(|s| s.to_str())
         .unwrap_or("mp4");
-    
+
     for i in 0..num_segments {
         let start_time = i as f64 * segment_duration;
-        let output_path = temp_dir.path().join(format!("{}_part_{:03}.{}", file_stem, i + 1, file_extension));
-        
+        let output_path = temp_dir.path().join(format!(
+            "{}_part_{:03}.{}",
+            file_stem,
+            i + 1,
+            file_extension
+        ));
+
         // Use ffmpeg to split the video
         let output = Command::new("ffmpeg")
             .args(&[
-                "-i", video_path,
-                "-ss", &start_time.to_string(),
-                "-t", &segment_duration.to_string(),
-                "-c", "copy", // Copy without re-encoding for speed
-                "-avoid_negative_ts", "make_zero",
+                "-i",
+                video_path,
+                "-ss",
+                &start_time.to_string(),
+                "-t",
+                &segment_duration.to_string(),
+                "-c",
+                "copy", // Copy without re-encoding for speed
+                "-avoid_negative_ts",
+                "make_zero",
                 output_path.to_str().unwrap(),
-                "-y" // Overwrite output files
+                "-y", // Overwrite output files
             ])
             .output();
-        
+
         match output {
             Ok(result) => {
                 if result.status.success() {
@@ -335,29 +482,37 @@ async fn split_video_if_needed(video_path: &str) -> Result<Vec<String>> {
                 }
             }
             Err(e) => {
-                return Err(anyhow::anyhow!("Failed to execute ffmpeg: {}. Make sure ffmpeg is installed and in your PATH.", e));
+                return Err(anyhow::anyhow!(
+                    "Failed to execute ffmpeg: {}. Make sure ffmpeg is installed and in your PATH.",
+                    e
+                ));
             }
         }
     }
-    
+
     Ok(segments)
 }
 
 async fn get_video_duration(video_path: &str) -> Result<f64> {
     let output = Command::new("ffprobe")
         .args(&[
-            "-v", "quiet",
-            "-show_entries", "format=duration",
-            "-of", "csv=p=0",
-            video_path
+            "-v",
+            "quiet",
+            "-show_entries",
+            "format=duration",
+            "-of",
+            "csv=p=0",
+            video_path,
         ])
         .output();
-    
+
     match output {
         Ok(result) => {
             if result.status.success() {
                 let duration_str = String::from_utf8_lossy(&result.stdout);
-                let duration: f64 = duration_str.trim().parse()
+                let duration: f64 = duration_str
+                    .trim()
+                    .parse()
                     .map_err(|_| anyhow::anyhow!("Failed to parse duration"))?;
                 Ok(duration)
             } else {
@@ -365,20 +520,32 @@ async fn get_video_duration(video_path: &str) -> Result<f64> {
                 Err(anyhow::anyhow!("ffprobe failed: {}", stderr))
             }
         }
-        Err(e) => {
-            Err(anyhow::anyhow!("Failed to execute ffprobe: {}. Make sure ffmpeg is installed and in your PATH.", e))
-        }
+        Err(e) => Err(anyhow::anyhow!(
+            "Failed to execute ffprobe: {}. Make sure ffmpeg is installed and in your PATH.",
+            e
+        )),
     }
 }
 
-async fn integrate_documents(documents: &[String], mode: &str, api_key: &str) -> Result<String> {
+async fn integrate_documents(
+    documents: &[String],
+    mode: &str,
+    language: &str,
+    api_key: &str,
+) -> Result<String> {
     let client = reqwest::Client::new();
-    
+
+    let language_instruction = match language {
+        "english" => "Please write the integrated document in English",
+        "japanese" | _ => "Please write the integrated document in Japanese",
+    };
+
     let integration_prompt = match mode {
         "manual" => {
             format!(
                 "Please integrate the following manual documents into one comprehensive, cohesive manual. \
-                Ensure proper flow, eliminate redundancy, and organize the content logically:\n\n{}",
+                Ensure proper flow, eliminate redundancy, and organize the content logically. {}:\n\n{}",
+                language_instruction,
                 documents.iter()
                     .enumerate()
                     .map(|(i, doc)| format!("=== Document {} ===\n{}\n", i + 1, doc))
@@ -389,7 +556,8 @@ async fn integrate_documents(documents: &[String], mode: &str, api_key: &str) ->
         "specification" => {
             format!(
                 "Please integrate the following specification documents into one comprehensive, cohesive specification. \
-                Ensure technical consistency, proper organization, and eliminate redundancy:\n\n{}",
+                Ensure technical consistency, proper organization, and eliminate redundancy. {}:\n\n{}",
+                language_instruction,
                 documents.iter()
                     .enumerate()
                     .map(|(i, doc)| format!("=== Specification Part {} ===\n{}\n", i + 1, doc))
@@ -399,7 +567,8 @@ async fn integrate_documents(documents: &[String], mode: &str, api_key: &str) ->
         }
         _ => {
             format!(
-                "Please integrate the following documents into one comprehensive document:\n\n{}",
+                "Please integrate the following documents into one comprehensive document. {}:\n\n{}",
+                language_instruction,
                 documents.iter()
                     .enumerate()
                     .map(|(i, doc)| format!("=== Document {} ===\n{}\n", i + 1, doc))
@@ -408,19 +577,21 @@ async fn integrate_documents(documents: &[String], mode: &str, api_key: &str) ->
             )
         }
     };
-    
+
     let request = GeminiRequest {
         contents: vec![GeminiContent {
-            parts: vec![GeminiPart::Text { text: integration_prompt }],
+            parts: vec![GeminiPart::Text {
+                text: integration_prompt,
+            }],
         }],
     };
-    
+
     let response = client
         .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-pro:generateContent?key={}", api_key))
         .json(&request)
         .send()
         .await?;
-    
+
     if response.status().is_success() {
         let gemini_response: GeminiResponse = response.json().await?;
         if let Some(candidate) = gemini_response.candidates.first() {
@@ -433,58 +604,72 @@ async fn integrate_documents(documents: &[String], mode: &str, api_key: &str) ->
         Err(anyhow::anyhow!("No text content in integration response"))
     } else {
         let error_text = response.text().await?;
-        Err(anyhow::anyhow!("Document integration failed: {}", error_text))
+        Err(anyhow::anyhow!(
+            "Document integration failed: {}",
+            error_text
+        ))
     }
 }
 
 #[tauri::command]
 async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(), String> {
+    // println!("save_settings called with: {:?}", settings);
     let config_path = get_config_file_path(&app)?;
-    
+    // println!("Config path: {:?}", config_path);
+
     // Ensure the parent directory exists
     if let Some(parent) = config_path.parent() {
-        fs::create_dir_all(parent).map_err(|e| format!("Failed to create config directory: {}", e))?;
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
     }
-    
+
     // Encrypt sensitive data before saving
     let safe_settings = AppSettings {
         mode: settings.mode,
         gemini_api_key: encrypt_api_key(&settings.gemini_api_key),
+        language: settings.language,
     };
-    
+
     let config_json = serde_json::to_string_pretty(&safe_settings)
         .map_err(|e| format!("Failed to serialize settings: {}", e))?;
-    
+
     fs::write(&config_path, config_json)
         .map_err(|e| format!("Failed to write settings file: {}", e))?;
-    
+
+    // println!("Settings saved successfully to: {:?}", config_path);
     Ok(())
 }
 
 #[tauri::command]
 async fn load_settings(app: tauri::AppHandle) -> Result<Option<AppSettings>, String> {
+    // println!("load_settings called");
     let config_path = get_config_file_path(&app)?;
-    
+    // println!("Config path: {:?}", config_path);
+
     if !config_path.exists() {
+        // println!("Config file does not exist");
         return Ok(None);
     }
-    
+
     let config_content = fs::read_to_string(&config_path)
         .map_err(|e| format!("Failed to read settings file: {}", e))?;
-    
+
     let mut settings: AppSettings = serde_json::from_str(&config_content)
         .map_err(|e| format!("Failed to parse settings file: {}", e))?;
-    
+
     // Decrypt sensitive data after loading
     settings.gemini_api_key = decrypt_api_key(&settings.gemini_api_key);
-    
+
+    // println!("Loaded and decrypted settings: {:?}", settings);
     Ok(Some(settings))
 }
 
 fn get_config_file_path(app: &tauri::AppHandle) -> Result<PathBuf, String> {
-    let app_dir = app.path().app_config_dir()
+    let app_dir = app
+        .path()
+        .app_config_dir()
         .map_err(|e| format!("Failed to get app config directory: {}", e))?;
-    
+
     Ok(app_dir.join("settings.json"))
 }
 
@@ -493,28 +678,28 @@ fn encrypt_api_key(api_key: &str) -> String {
     // In production, use proper encryption like AES
     let key = b"document_encoder_key_2024"; // 24-byte key
     let mut encrypted = Vec::new();
-    
+
     for (i, byte) in api_key.bytes().enumerate() {
         encrypted.push(byte ^ key[i % key.len()]);
     }
-    
-    use base64::{Engine as _, engine::general_purpose};
+
+    use base64::{engine::general_purpose, Engine as _};
     general_purpose::STANDARD.encode(encrypted)
 }
 
 fn decrypt_api_key(encrypted_api_key: &str) -> String {
     // Decrypt using the same XOR method
     let key = b"document_encoder_key_2024";
-    
-    use base64::{Engine as _, engine::general_purpose};
+
+    use base64::{engine::general_purpose, Engine as _};
     match general_purpose::STANDARD.decode(encrypted_api_key) {
         Ok(encrypted_bytes) => {
             let mut decrypted = Vec::new();
-            
+
             for (i, byte) in encrypted_bytes.iter().enumerate() {
                 decrypted.push(byte ^ key[i % key.len()]);
             }
-            
+
             String::from_utf8(decrypted).unwrap_or_default()
         }
         Err(_) => {

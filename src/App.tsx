@@ -12,14 +12,16 @@ interface VideoFile {
 
 interface AppSettings {
   mode: DocumentMode;
-  geminiApiKey: string;
+  gemini_api_key: string;
+  language: string;
 }
 
 function App() {
   const [selectedFiles, setSelectedFiles] = useState<VideoFile[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
     mode: "manual",
-    geminiApiKey: ""
+    gemini_api_key: "",
+    language: "japanese"
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [generatedDocument, setGeneratedDocument] = useState("");
@@ -44,12 +46,12 @@ function App() {
 
   const handleGenerateDocument = async () => {
     if (selectedFiles.length === 0) {
-      alert("動画ファイルを選択してください。");
+      console.error("No video files selected");
       return;
     }
     
-    if (!settings.geminiApiKey) {
-      alert("設定画面でGemini APIキーを設定してください。");
+    if (!settings.gemini_api_key) {
+      console.error("Gemini API key is not set");
       return;
     }
 
@@ -57,13 +59,11 @@ function App() {
     try {
       const result = await invoke<string>("generate_document", {
         files: selectedFiles,
-        mode: settings.mode,
-        apiKey: settings.geminiApiKey
+        settings: settings
       });
       setGeneratedDocument(result);
     } catch (error) {
       console.error("Error generating document:", error);
-      alert("ドキュメント生成中にエラーが発生しました。");
     } finally {
       setIsProcessing(false);
     }
@@ -115,12 +115,24 @@ function App() {
           </div>
           
           <div className="form-group">
+            <label htmlFor="language">出力言語:</label>
+            <select 
+              id="language"
+              value={settings.language}
+              onChange={(e) => setSettings(prev => ({ ...prev, language: e.target.value }))}
+            >
+              <option value="japanese">日本語</option>
+              <option value="english">English</option>
+            </select>
+          </div>
+          
+          <div className="form-group">
             <label htmlFor="apiKey">Gemini API Key:</label>
             <input
               type="password"
               id="apiKey"
-              value={settings.geminiApiKey}
-              onChange={(e) => setSettings(prev => ({ ...prev, geminiApiKey: e.target.value }))}
+              value={settings.gemini_api_key}
+              onChange={(e) => setSettings(prev => ({ ...prev, gemini_api_key: e.target.value }))}
               placeholder="API keyを入力してください"
             />
           </div>
@@ -170,6 +182,7 @@ function App() {
 
       <div className="mode-indicator">
         <p>現在のモード: {settings.mode === "manual" ? "マニュアル作成" : "仕様書作成"}</p>
+        <p>出力言語: {settings.language === "japanese" ? "日本語" : "English"}</p>
       </div>
 
       <div className="generate-section">
