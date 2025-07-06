@@ -7,7 +7,7 @@ use tokio::time::{sleep, Duration};
 
 use crate::types::{
     GeminiRequest, GeminiContent, GeminiPart, GeminiFileData, GeminiResponse,
-    GeminiUploadResponse, GeminiFileInfo, ProgressUpdate
+    GeminiUploadResponse, ProgressUpdate
 };
 
 // Internal GeminiFileInfo for status polling (with optional fields)

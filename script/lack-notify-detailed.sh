@@ -53,7 +53,7 @@ case "$TOOL_NAME" in
         FILE_PATH=$(echo "$JSON_INPUT" | jq -r '.tool_input.file_path // .tool_input.path // "不明"')
         if [ "$TOOL_NAME" = "MultiEdit" ]; then
             EDIT_COUNT=$(echo "$JSON_INPUT" | jq -r '.tool_input.edits | length // 0')
-            DETAILS="ファイル: \`${FILE_PATH}\`\n編集箇所: ${EDIT_COUNT}件"
+            DETAILS="ファイル: \`${FILE_PATH}\`\\n編集箇所: ${EDIT_COUNT}件"
         else
             DETAILS="ファイル: \`${FILE_PATH}\`"
         fi
@@ -70,7 +70,7 @@ case "$TOOL_NAME" in
         else
             COMMAND_DISPLAY="$COMMAND"
         fi
-        DETAILS="コマンド: \`${COMMAND_DISPLAY}\`\n結果: ${STATUS}"
+        DETAILS="コマンド: \`${COMMAND_DISPLAY}\`\\n結果: ${STATUS}"
         ;;
     "Read"|"NotebookRead")
         ICON=":book:"
