@@ -11,8 +11,8 @@ jobs:
       fail-fast: false
       matrix:
         settings:
-          # - platform: "macos-latest"
-          #   args: ""
+          - platform: "macos-latest"
+            args: ""
           - platform: "windows-latest"
             args: ""
 
