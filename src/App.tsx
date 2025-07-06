@@ -1,34 +1,21 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
-
-type DocumentMode = "manual" | "specification";
-
-interface VideoFile {
-  path: string;
-  name: string;
-  size: number;
-}
-
-interface AppSettings {
-  mode: DocumentMode;
-  gemini_api_key: string;
-  language: string;
-}
-
-interface ProgressUpdate {
-  message: string;
-  step: number;
-  total_steps: number;
-}
+import { VideoFile, AppSettings, PromptPreset, ProgressUpdate } from './types';
+import { generateFilename } from './utils/fileUtils';
+import { useLogger } from './hooks/useLogger';
+import ApiSettings from './components/ApiSettings';
+import PromptSettings from './components/PromptSettings';
+import PresetEditModal from './components/PresetEditModal';
+import MainDashboard from './components/MainDashboard';
 
 function App() {
   const [selectedFiles, setSelectedFiles] = useState<VideoFile[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
-    mode: "manual",
     gemini_api_key: "",
-    language: "japanese"
+    language: "japanese",
+    temperature: 0
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [generatedDocument, setGeneratedDocument] = useState("");
@@ -36,28 +23,21 @@ function App() {
   const [progressMessage, setProgressMessage] = useState("");
   const [progressStep, setProgressStep] = useState(0);
   const [totalSteps, setTotalSteps] = useState(0);
-  const [logs, setLogs] = useState<string[]>([]);
   const [showLogs, setShowLogs] = useState(false);
-  const logContainerRef = useRef<HTMLDivElement>(null);
   const [saveDirectory, setSaveDirectory] = useState<string>("");
+  const [currentPrompt, setCurrentPrompt] = useState<string>("");
+  const [promptPresets, setPromptPresets] = useState<PromptPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
+  const [showPromptSettings, setShowPromptSettings] = useState(false);
+  const [editingPreset, setEditingPreset] = useState<PromptPreset | null>(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [newPresetName, setNewPresetName] = useState("");
+  const [newPresetPrompt, setNewPresetPrompt] = useState("");
+  const [isDeleting, setIsDeleting] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deleteTargetId, setDeleteTargetId] = useState<string | null>(null);
 
-  const addLog = (message: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const logEntry = `[${timestamp}] ${message}`;
-    setLogs(prev => [...prev, logEntry]);
-    console.log(logEntry);
-    
-    // Auto-scroll to bottom when new log is added
-    setTimeout(() => {
-      if (logContainerRef.current) {
-        logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
-      }
-    }, 100);
-  };
-
-  const clearLogs = () => {
-    setLogs([]);
-  };
+  const { logs, addLog, clearLogs } = useLogger();
 
   const handleSelectSaveDirectory = async () => {
     try {
@@ -70,16 +50,6 @@ function App() {
       addLog(`❌ 保存先ディレクトリ選択エラー: ${error}`);
       console.error("Error selecting save directory:", error);
     }
-  };
-
-  const generateFilename = (files: VideoFile[]): string => {
-    if (files.length === 0) return "document.md";
-    
-    const firstFile = files[0];
-    const filename = firstFile.name;
-    // 拡張子を除去してMarkdownファイル名を生成
-    const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
-    return `${nameWithoutExt}.md`;
   };
 
   const handleSaveDocument = async () => {
@@ -109,8 +79,8 @@ function App() {
 
   useEffect(() => {
     loadSettings();
+    loadPromptPresets();
     
-    // Progress update listener
     addLog("🎧 Setting up progress update listener...");
     const unsubscribe = listen<ProgressUpdate>("progress_update", (event) => {
       const { message, step, total_steps } = event.payload;
@@ -131,15 +101,35 @@ function App() {
       const files = await invoke<VideoFile[]>("select_video_files");
       addLog(`✅ Selected ${files.length} files: ${files.map(f => f.name).join(", ")}`);
       setSelectedFiles(files);
+      
+      // 動画ファイルが選択された場合、最初のファイルのディレクトリを保存先として設定
+      if (files.length > 0 && files[0].path) {
+        const firstFilePath = files[0].path;
+        const directoryPath = firstFilePath.substring(0, firstFilePath.lastIndexOf('/'));
+        setSaveDirectory(directoryPath);
+        addLog(`📁 保存先を動画ディレクトリに設定: ${directoryPath}`);
+      }
     } catch (error) {
       addLog(`❌ Error selecting files: ${error}`);
-      addLog(`📊 File selection error details: ${JSON.stringify(error, null, 2)}`);
       console.error("Error selecting files:", error);
     }
   };
 
   const handleRemoveFile = (index: number) => {
-    setSelectedFiles(files => files.filter((_, i) => i !== index));
+    const newFiles = selectedFiles.filter((_, i) => i !== index);
+    setSelectedFiles(newFiles);
+    
+    // すべてのファイルが削除された場合、保存先ディレクトリもクリア
+    if (newFiles.length === 0) {
+      setSaveDirectory("");
+      addLog("📁 すべてのファイルが削除されたため、保存先ディレクトリをクリアしました");
+    } else if (newFiles.length > 0 && newFiles[0].path) {
+      // 残りのファイルの最初のファイルのディレクトリを保存先として設定
+      const firstFilePath = newFiles[0].path;
+      const directoryPath = firstFilePath.substring(0, firstFilePath.lastIndexOf('/'));
+      setSaveDirectory(directoryPath);
+      addLog(`📁 保存先を更新: ${directoryPath}`);
+    }
   };
 
   const handleGenerateDocument = async () => {
@@ -155,7 +145,6 @@ function App() {
       return;
     }
 
-    // 保存先ディレクトリを選択
     let currentSaveDirectory = saveDirectory;
     if (!currentSaveDirectory) {
       addLog("📁 保存先ディレクトリを選択してください");
@@ -179,27 +168,24 @@ function App() {
     addLog(`📝 生成予定ファイル名: ${filename}`);
     addLog(`📁 保存先: ${currentSaveDirectory}`);
 
-    addLog(`📁 Processing ${selectedFiles.length} files: ${selectedFiles.map(f => f.name).join(", ")}`);
-    addLog(`⚙️ Settings: mode=${settings.mode}, language=${settings.language}`);
-
     setIsProcessing(true);
     setProgressMessage("処理を開始しています...");
     setProgressStep(0);
     setTotalSteps(0);
-    setShowLogs(true); // 処理開始時にログを表示
+    setShowLogs(true);
     
     try {
-      addLog("📤 Sending request to backend...");
       const result = await invoke<string>("generate_document", {
         files: selectedFiles,
-        settings: settings
+        settings: {
+          ...settings,
+          custom_prompt: currentPrompt || undefined
+        }
       });
       addLog("✅ Document generation completed successfully");
-      addLog(`📄 Generated document length: ${result.length}`);
       setGeneratedDocument(result);
       setProgressMessage("処理が完了しました！");
 
-      // 自動保存
       try {
         const savedPath = await invoke<string>("save_document_to_file", {
           content: result,
@@ -212,7 +198,6 @@ function App() {
       }
     } catch (error) {
       addLog(`❌ Error generating document: ${error}`);
-      addLog(`📊 Error details: ${JSON.stringify(error, null, 2)}`);
       setProgressMessage("エラーが発生しました。");
       console.error("Error generating document:", error);
     } finally {
@@ -222,250 +207,261 @@ function App() {
   };
 
   const handleSaveSettings = async () => {
-    addLog(`💾 Saving settings: mode=${settings.mode}, language=${settings.language}`);
     try {
       await invoke("save_settings", { settings });
       addLog("✅ Settings saved successfully");
       setShowSettings(false);
     } catch (error) {
       addLog(`❌ Error saving settings: ${error}`);
-      addLog(`📊 Settings save error details: ${JSON.stringify(error, null, 2)}`);
       console.error("Error saving settings:", error);
     }
   };
 
   const loadSettings = async () => {
-    addLog("📖 Loading settings...");
     try {
       const savedSettings = await invoke<AppSettings | null>("load_settings");
       if (savedSettings) {
-        addLog(`✅ Settings loaded successfully: mode=${savedSettings.mode}, language=${savedSettings.language}`);
         setSettings(savedSettings);
-      } else {
-        addLog("ℹ️ No saved settings found, using defaults");
+        addLog(`✅ Settings loaded successfully`);
       }
     } catch (error) {
       addLog(`❌ Error loading settings: ${error}`);
-      addLog(`📊 Settings load error details: ${JSON.stringify(error, null, 2)}`);
       console.error("Error loading settings:", error);
     }
   };
 
-  const formatFileSize = (bytes: number): string => {
-    if (bytes === 0) return "0 B";
-    const k = 1024;
-    const sizes = ["B", "KB", "MB", "GB"];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
+  const loadPromptPresets = async () => {
+    try {
+      const presets = await invoke<PromptPreset[]>("load_prompt_presets");
+      setPromptPresets(presets);
+      addLog(`✅ Loaded ${presets.length} prompt presets`);
+    } catch (error) {
+      addLog(`❌ Error loading prompt presets: ${error}`);
+      console.error("Error loading prompt presets:", error);
+    }
+  };
+
+  const handlePromptPresetSelect = (presetId: string) => {
+    setSelectedPresetId(presetId);
+    if (presetId === "") {
+      // 空の選択肢が選ばれた場合はプロンプトをクリア
+      setCurrentPrompt("");
+      return;
+    }
+    
+    const preset = promptPresets.find(p => p.id === presetId);
+    if (preset) {
+      setCurrentPrompt(preset.prompt);
+      addLog(`✅ プロンプトプリセットを選択: ${preset.name}`);
+    }
+  };
+
+  const handlePresetEdit = (preset: PromptPreset) => {
+    if (preset.is_default) {
+      alert('デフォルトプリセットは編集できません。');
+      return;
+    }
+    setEditingPreset(preset);
+    setNewPresetName(preset.name);
+    setNewPresetPrompt(preset.prompt);
+    setShowEditModal(true);
+  };
+
+  const handlePresetDeleteRequest = (presetId: string) => {
+    if (isDeleting || showDeleteConfirm) return;
+    
+    const preset = promptPresets.find(p => p.id === presetId);
+    if (preset?.is_default) {
+      alert('デフォルトプリセットは削除できません。');
+      return;
+    }
+    
+    setDeleteTargetId(presetId);
+    setShowDeleteConfirm(true);
+  };
+
+  const handleConfirmDelete = async () => {
+    if (!deleteTargetId) return;
+
+    setShowDeleteConfirm(false);
+    setIsDeleting(true);
+    
+    try {
+      const updatedPresets = promptPresets.filter(p => p.id !== deleteTargetId);
+      await invoke("save_prompt_presets", { presets: updatedPresets });
+      setPromptPresets(updatedPresets);
+      addLog(`✅ プリセットを削除しました`);
+    } catch (error) {
+      addLog(`❌ プリセット削除エラー: ${error}`);
+      console.error("Error deleting preset:", error);
+    } finally {
+      setIsDeleting(false);
+      setDeleteTargetId(null);
+    }
+  };
+
+  const handleCancelDelete = () => {
+    setShowDeleteConfirm(false);
+    setDeleteTargetId(null);
+  };
+
+  const handleNewPreset = () => {
+    setEditingPreset(null);
+    setNewPresetName("");
+    setNewPresetPrompt("");
+    setShowEditModal(true);
+  };
+
+  const handleSavePreset = async () => {
+    if (!newPresetName.trim() || !newPresetPrompt.trim()) {
+      alert("プリセット名とプロンプトの両方を入力してください。");
+      return;
+    }
+
+    try {
+      let updatedPresets;
+      
+      if (editingPreset) {
+        updatedPresets = promptPresets.map(p => 
+          p.id === editingPreset.id 
+            ? { ...p, name: newPresetName, prompt: newPresetPrompt }
+            : p
+        );
+      } else {
+        const newPreset: PromptPreset = {
+          id: `preset_${Date.now()}`,
+          name: newPresetName,
+          prompt: newPresetPrompt,
+          is_default: false
+        };
+        updatedPresets = [...promptPresets, newPreset];
+      }
+
+      await invoke("save_prompt_presets", { presets: updatedPresets });
+      setPromptPresets(updatedPresets);
+      setShowEditModal(false);
+      setEditingPreset(null);
+      setNewPresetName("");
+      setNewPresetPrompt("");
+      addLog(`✅ プリセットを保存しました: ${newPresetName}`);
+    } catch (error) {
+      addLog(`❌ プリセット保存エラー: ${error}`);
+      console.error("Error saving preset:", error);
+    }
+  };
+
+  const handleImportXML = async () => {
+    try {
+      const importedPresets = await invoke<PromptPreset[]>("import_prompt_presets_from_file");
+      setPromptPresets(importedPresets);
+      addLog(`✅ XMLファイルから${importedPresets.length}個のプリセットを読み込みました`);
+    } catch (error) {
+      addLog(`❌ XMLファイル読み込みエラー: ${error}`);
+      console.error("Error importing XML:", error);
+    }
+  };
+
+  const handleExportXML = async () => {
+    try {
+      // デフォルトプリセットを除外してエクスポート
+      const userPresets = promptPresets.filter(preset => !preset.is_default);
+      await invoke("export_prompt_presets_to_file", { presets: userPresets });
+      addLog(`✅ ${userPresets.length}個のユーザープリセットをXMLファイルに出力しました`);
+    } catch (error) {
+      addLog(`❌ XMLファイル出力エラー: ${error}`);
+      console.error("Error exporting XML:", error);
+    }
+  };
+
+  const handleUpdateSettingsWithSave = async (newSettings: AppSettings) => {
+    setSettings(newSettings);
+    try {
+      await invoke("save_settings", { settings: newSettings });
+      addLog(`✅ 設定を更新しました`);
+    } catch (error) {
+      addLog(`❌ 設定保存エラー: ${error}`);
+    }
   };
 
   if (showSettings) {
     return (
-      <main className="container">
-        <h1>API設定</h1>
-        <div className="settings-form">
-          <div className="form-group">
-            <label htmlFor="apiKey">Gemini API Key:</label>
-            <input
-              type="password"
-              id="apiKey"
-              value={settings.gemini_api_key}
-              onChange={(e) => setSettings(prev => ({ ...prev, gemini_api_key: e.target.value }))}
-              placeholder="API keyを入力してください"
-            />
-          </div>
-          
-          <div className="button-group">
-            <button onClick={handleSaveSettings}>保存</button>
-            <button onClick={() => setShowSettings(false)}>キャンセル</button>
-          </div>
-        </div>
-      </main>
+      <ApiSettings
+        settings={settings}
+        onUpdateSettings={setSettings}
+        onClose={() => setShowSettings(false)}
+        onSave={handleSaveSettings}
+      />
+    );
+  }
+
+  if (showPromptSettings) {
+    return (
+      <>
+        <PromptSettings
+          promptPresets={promptPresets}
+          onClose={() => setShowPromptSettings(false)}
+          onEditPreset={handlePresetEdit}
+          onDeletePreset={handlePresetDeleteRequest}
+          onNewPreset={handleNewPreset}
+          onImportXML={handleImportXML}
+          onExportXML={handleExportXML}
+          isDeleting={isDeleting}
+          showDeleteConfirm={showDeleteConfirm}
+          deleteTargetId={deleteTargetId}
+          onConfirmDelete={handleConfirmDelete}
+          onCancelDelete={handleCancelDelete}
+        />
+        <PresetEditModal
+          isOpen={showEditModal}
+          editingPreset={editingPreset}
+          presetName={newPresetName}
+          presetPrompt={newPresetPrompt}
+          onNameChange={setNewPresetName}
+          onPromptChange={setNewPresetPrompt}
+          onSave={handleSavePreset}
+          onClose={() => setShowEditModal(false)}
+        />
+      </>
     );
   }
 
   return (
-    <main className="container">
-      <header className="header">
-        <h1>Document Encoder</h1>
-        <button className="settings-btn" onClick={() => setShowSettings(true)}>
-          API設定
-        </button>
-      </header>
-
-      <div className="mode-language-section">
-        <h2>ドキュメント設定</h2>
-        <div className="settings-row">
-          <div className="setting-group">
-            <label htmlFor="mode">ドキュメントモード:</label>
-            <select 
-              id="mode"
-              value={settings.mode}
-              onChange={async (e) => {
-                const newSettings = { ...settings, mode: e.target.value as DocumentMode };
-                setSettings(newSettings);
-                try {
-                  await invoke("save_settings", { settings: newSettings });
-                  addLog(`✅ ドキュメントモードを変更: ${e.target.value === "manual" ? "マニュアル作成" : "仕様書作成"}`);
-                } catch (error) {
-                  addLog(`❌ 設定保存エラー: ${error}`);
-                }
-              }}
-            >
-              <option value="manual">マニュアル作成モード</option>
-              <option value="specification">仕様書作成モード</option>
-            </select>
-          </div>
-          
-          <div className="setting-group">
-            <label htmlFor="language">出力言語:</label>
-            <select 
-              id="language"
-              value={settings.language}
-              onChange={async (e) => {
-                const newSettings = { ...settings, language: e.target.value };
-                setSettings(newSettings);
-                try {
-                  await invoke("save_settings", { settings: newSettings });
-                  addLog(`✅ 出力言語を変更: ${e.target.value === "japanese" ? "日本語" : "English"}`);
-                } catch (error) {
-                  addLog(`❌ 設定保存エラー: ${error}`);
-                }
-              }}
-            >
-              <option value="japanese">日本語</option>
-              <option value="english">English</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
-      <div className="file-selection">
-        <h2>動画ファイル選択</h2>
-        <button className="file-select-btn" onClick={handleFileSelect}>
-          ファイルを選択
-        </button>
-        
-        {selectedFiles.length > 0 && (
-          <div className="file-list">
-            <h3>選択されたファイル ({selectedFiles.length}件)</h3>
-            {selectedFiles.map((file, index) => (
-              <div key={index} className="file-item">
-                <span className="file-name">{file.name}</span>
-                <span className="file-size">({formatFileSize(file.size)})</span>
-                <button 
-                  className="remove-btn"
-                  onClick={() => handleRemoveFile(index)}
-                >
-                  削除
-                </button>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-
-      <div className="save-directory-section">
-        <h2>保存設定</h2>
-        <button className="directory-select-btn" onClick={handleSelectSaveDirectory}>
-          {saveDirectory ? "保存先を変更" : "保存先ディレクトリを選択"}
-        </button>
-        {saveDirectory && (
-          <p className="directory-preview">
-            保存先: {saveDirectory}
-          </p>
-        )}
-        {selectedFiles.length > 0 && (
-          <p className="filename-preview">
-            生成ファイル名: {generateFilename(selectedFiles)}
-          </p>
-        )}
-      </div>
-
-      <div className="generate-section">
-        <button 
-          className="generate-btn"
-          onClick={handleGenerateDocument}
-          disabled={isProcessing || selectedFiles.length === 0}
-        >
-          {isProcessing ? "処理中..." : "ドキュメント生成"}
-        </button>
-        
-        {isProcessing && (
-          <div className="progress-section">
-            <div className="progress-message">{progressMessage}</div>
-            {totalSteps > 0 && (
-              <div className="progress-bar-container">
-                <div className="progress-bar">
-                  <div 
-                    className="progress-bar-fill"
-                    style={{ width: `${(progressStep / totalSteps) * 100}%` }}
-                  ></div>
-                </div>
-                <div className="progress-text">
-                  {progressStep} / {totalSteps}
-                </div>
-              </div>
-            )}
-            
-            <div className="log-section">
-              <div className="log-header">
-                <span>処理ログ ({logs.length}件)</span>
-                <div className="log-buttons">
-                  <button 
-                    className="log-toggle-btn"
-                    onClick={() => setShowLogs(!showLogs)}
-                  >
-                    {showLogs ? '非表示' : '表示'}
-                  </button>
-                  {logs.length > 0 && (
-                    <button 
-                      className="log-clear-btn"
-                      onClick={clearLogs}
-                    >
-                      クリア
-                    </button>
-                  )}
-                </div>
-              </div>
-              {showLogs && (
-                <div className="log-container" ref={logContainerRef}>
-                  {logs.map((log, index) => (
-                    <div key={index} className="log-entry">
-                      {log}
-                    </div>
-                  ))}
-                  {logs.length === 0 && (
-                    <div className="log-entry log-empty">
-                      ログはまだありません
-                    </div>
-                  )}
-                </div>
-              )}
-            </div>
-          </div>
-        )}
-      </div>
-
-      {generatedDocument && (
-        <div className="result-section">
-          <div className="result-header">
-            <h2>生成結果</h2>
-            <button 
-              className="save-btn"
-              onClick={handleSaveDocument}
-              disabled={!saveDirectory}
-            >
-              再保存
-            </button>
-          </div>
-          <div className="document-content">
-            <pre>{generatedDocument}</pre>
-          </div>
-        </div>
-      )}
-    </main>
+    <MainDashboard
+      settings={settings}
+      onUpdateSettings={handleUpdateSettingsWithSave}
+      selectedFiles={selectedFiles}
+      onFileSelect={handleFileSelect}
+      onRemoveFile={handleRemoveFile}
+      currentPrompt={currentPrompt}
+      onPromptChange={(prompt) => {
+        setCurrentPrompt(prompt);
+        // プロンプトが手動で編集された場合、プリセット選択をリセット
+        if (selectedPresetId) {
+          const selectedPreset = promptPresets.find(p => p.id === selectedPresetId);
+          if (selectedPreset && selectedPreset.prompt !== prompt) {
+            setSelectedPresetId("");
+          }
+        }
+      }}
+      promptPresets={promptPresets}
+      selectedPresetId={selectedPresetId}
+      onPromptPresetSelect={handlePromptPresetSelect}
+      saveDirectory={saveDirectory}
+      onSelectSaveDirectory={handleSelectSaveDirectory}
+      onGenerateDocument={handleGenerateDocument}
+      isProcessing={isProcessing}
+      progressMessage={progressMessage}
+      progressStep={progressStep}
+      totalSteps={totalSteps}
+      logs={logs}
+      showLogs={showLogs}
+      onToggleLogs={() => setShowLogs(!showLogs)}
+      onClearLogs={clearLogs}
+      generatedDocument={generatedDocument}
+      onShowSettings={() => setShowSettings(true)}
+      onShowPromptSettings={() => setShowPromptSettings(true)}
+      generateFilename={generateFilename}
+    />
   );
 }
 
