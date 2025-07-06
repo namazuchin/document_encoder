@@ -50,6 +50,12 @@ jobs:
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         with:
           args: ${{ matrix.settings.args }}
 
@@ -96,14 +102,14 @@ jobs:
 
           # macOS artifacts
           if [ -d "artifacts-macos-latest" ]; then
-            find artifacts-macos-latest -name "*.dmg" -exec cp {} release-assets/ \;
-            find artifacts-macos-latest -name "*.app.tar.gz" -exec cp {} release-assets/ \;
+            find artifacts-macos-latest -name "*.dmg" -exec sh -c 'cp "$1" "release-assets/$(basename "$1" .dmg)-macos.dmg"' _ {} \;
+            find artifacts-macos-latest -name "*.app.tar.gz" -exec sh -c 'cp "$1" "release-assets/$(basename "$1" .app.tar.gz)-macos.app.tar.gz"' _ {} \;
           fi
 
           # Windows artifacts
           if [ -d "artifacts-windows-latest" ]; then
-            find artifacts-windows-latest -name "*.msi" -exec cp {} release-assets/ \;
-            find artifacts-windows-latest -name "*.exe" -exec cp {} release-assets/ \;
+            find artifacts-windows-latest -name "*.msi" -exec sh -c 'cp "$1" "release-assets/$(basename "$1" .msi)-windows.msi"' _ {} \;
+            find artifacts-windows-latest -name "*.exe" -exec sh -c 'cp "$1" "release-assets/$(basename "$1" .exe)-windows.exe"' _ {} \;
           fi
 
           ls -la release-assets/
