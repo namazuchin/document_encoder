@@ -117,17 +117,57 @@
   background: #c82333;
 }
 
-.mode-indicator {
-  margin-bottom: 20px;
-  padding: 10px;
-  background: #e9ecef;
+.mode-language-section {
+  margin-bottom: 30px;
+  padding: 20px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
   border-radius: 4px;
 }
 
-.mode-indicator p {
-  margin: 0;
+.mode-language-section h2 {
+  margin-bottom: 15px;
+  color: #333;
+}
+
+.settings-row {
+  display: flex;
+  gap: 20px;
+  align-items: flex-end;
+}
+
+.setting-group {
+  flex: 1;
+}
+
+.setting-group label {
+  display: block;
+  margin-bottom: 5px;
   font-weight: 500;
-  color: #495057;
+  color: #333;
+}
+
+.setting-group select {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.setting-group select:focus {
+  outline: none;
+  border-color: #007bff;
+  box-shadow: 0 0 0 2px rgba(0, 123, 255, 0.25);
+}
+
+.directory-preview {
+  margin: 8px 0 0 0;
+  color: #6c757d;
+  font-size: 13px;
+  font-style: italic;
+  word-break: break-all;
 }
 
 .generate-section {
@@ -252,6 +292,69 @@
   color: #6c757d;
   font-style: italic;
   text-align: center;
+}
+
+.save-directory-section {
+  margin-bottom: 30px;
+  padding: 15px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.save-directory-section h2 {
+  margin-bottom: 15px;
+  color: #333;
+}
+
+.directory-select-btn {
+  background: #17a2b8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-bottom: 10px;
+}
+
+.directory-select-btn:hover {
+  background: #138496;
+}
+
+.filename-preview {
+  margin: 0;
+  color: #6c757d;
+  font-size: 14px;
+  font-style: italic;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.save-btn {
+  background: #fd7e14;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #e8690b;
+}
+
+.save-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
 }
 
 .generate-btn {
@@ -396,12 +499,27 @@
     border-color: #555;
   }
 
-  .mode-indicator {
+  .mode-language-section {
     background: #3f3f3f;
+    border-color: #555;
   }
 
-  .mode-indicator p {
+  .mode-language-section h2 {
     color: #f6f6f6;
+  }
+
+  .setting-group label {
+    color: #f6f6f6;
+  }
+
+  .setting-group select {
+    background: #3f3f3f;
+    border-color: #555;
+    color: #f6f6f6;
+  }
+
+  .directory-preview {
+    color: #adb5bd;
   }
 
   .document-content {
@@ -461,6 +579,19 @@
   }
 
   .log-empty {
+    color: #adb5bd;
+  }
+
+  .save-directory-section {
+    background: #3f3f3f;
+    border-color: #555;
+  }
+
+  .save-directory-section h2 {
+    color: #f6f6f6;
+  }
+
+  .filename-preview {
     color: #adb5bd;
   }
 }
