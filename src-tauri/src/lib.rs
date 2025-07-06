@@ -94,7 +94,7 @@ async fn generate_document(
             files.len(),
             file.name
         );
-        match split_video_if_needed(&file.path).await {
+        match split_video_if_needed(&PathBuf::from(&file.path)).await {
             Ok(segments) => {
                 if segments.len() > 1 {
                     println!("✂️ [BACKEND] Video split into {} segments", segments.len());
@@ -103,7 +103,7 @@ async fn generate_document(
                     }
                 } else {
                     println!("✅ [BACKEND] Video is under 1 hour, no splitting needed");
-                    processed_files.push(file.path.clone());
+                    processed_files.push(PathBuf::from(&file.path));
                 }
             }
             Err(e) => {
@@ -142,10 +142,10 @@ async fn generate_document(
             "📤 [BACKEND] Uploading file {}/{}: {}",
             index + 1,
             processed_files.len(),
-            file_path
+            file_path.display()
         );
         match upload_to_gemini_with_progress(
-            file_path,
+            &file_path.to_string_lossy(),
             &settings.gemini_api_key,
             &app,
             current_step,
@@ -158,8 +158,8 @@ async fn generate_document(
                 file_uris.push(uri);
             }
             Err(e) => {
-                println!("❌ [BACKEND] Failed to upload file {}: {}", file_path, e);
-                return Err(format!("Failed to upload file {}: {}", file_path, e));
+                println!("❌ [BACKEND] Failed to upload file {}: {}", file_path.display(), e);
+                return Err(format!("Failed to upload file {}: {}", file_path.display(), e));
             }
         }
     }
