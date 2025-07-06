@@ -16,6 +16,8 @@ pub struct AppSettings {
     pub temperature: f64,
     #[serde(default)]
     pub custom_prompt: Option<String>,
+    #[serde(default = "default_gemini_model")]
+    pub gemini_model: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -31,6 +33,10 @@ pub fn default_language() -> String {
 
 pub fn default_temperature() -> f64 {
     0.0
+}
+
+pub fn default_gemini_model() -> String {
+    "gemini-2.5-pro".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
