@@ -6,6 +6,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 This is a Tauri application that combines a React frontend with a Rust backend. The project is called "document_encoder" and appears to be a desktop application for document encoding functionality.
 
+## What We're Building
+
+**For detailed project structure and requirements, refer to [@doc/spec.md](doc/spec.md) - this contains the complete specification including:**
+
+- **Core Purpose**: Desktop application that automatically generates text-based documents (manuals or specifications) from video files using Google's Gemini Pro API
+- **Supported Platforms**: macOS and Windows
+- **Video Processing**: Supports multiple formats (mp4, mov, avi, etc.) with automatic splitting for videos over 1 hour
+- **Document Generation**: Two modes - Manual creation mode and Specification creation mode
+- **Multi-language Support**: Japanese and English output
+- **Advanced Features**: Custom prompt presets, progress tracking, XML import/export of presets
+
+**Backend Module Structure** (Rust):
+- `lib.rs` (391 lines) - Main library with Tauri commands and initialization
+- `types.rs` (71 lines) - Type definitions for VideoFile, AppSettings, etc.
+- `file.rs` (90 lines) - File operation module with dialogs
+- `gemini.rs` (509 lines) - Gemini API integration with progress tracking
+- `video.rs` (213 lines) - Video processing with ffmpeg/ffprobe integration
+
+**Frontend Module Structure** (React/TypeScript):
+- `App.tsx` - Main application component with screen routing
+- `types.ts` - Type definitions matching backend structures
+- `utils/fileUtils.ts` - File manipulation utilities
+- `hooks/useLogger.ts` - Custom logging hook
+- `components/` - Screen components: ApiSettings, PromptSettings, PresetEditModal, MainDashboard
+
 ## Architecture
 
 **Frontend (React + TypeScript)**
@@ -24,6 +49,30 @@ This is a Tauri application that combines a React frontend with a Rust backend. 
 - Frontend: Vite bundler with React plugin
 - Backend: Cargo for Rust compilation
 - Tauri CLI orchestrates the build process
+
+## Development Testing
+
+**After making any development changes, ALWAYS run the following command to verify the application works correctly:**
+
+```bash
+npm run tauri dev
+```
+
+This command will:
+- Start the Tauri development environment
+- Launch both the React frontend and Rust backend
+- Open the desktop application window
+- Allow you to test all functionality including video file selection, Gemini API integration, and document generation
+
+**Testing checklist when running `npm run tauri dev`:**
+- Application launches without errors
+- All UI components render correctly
+- File selection dialogs work properly
+- API settings can be configured
+- Prompt settings and presets function as expected
+- Video processing and document generation complete successfully
+- Progress tracking displays correctly
+- Generated documents can be saved properly
 
 ## Development Commands
 
