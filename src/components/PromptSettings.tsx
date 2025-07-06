@@ -1,4 +1,3 @@
-import React from 'react';
 import { PromptPreset } from '../types';
 
 interface PromptSettingsProps {
