@@ -1,113 +1,113 @@
-use anyhow::Result;
-use std::path::Path;
-use std::process::Command;
-use tempfile;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Stdio};
 
-/// Splits a video file into segments if it's longer than 1 hour
-/// Returns a vector of file paths for the segments (or the original file if no split needed)
-pub async fn split_video_if_needed(video_path: &str) -> Result<Vec<String>> {
-    // Get video duration using ffprobe
-    let duration = get_video_duration(video_path).await?;
+use anyhow::{anyhow, Result};
+use log::debug;
+// Removed deprecated tauri::api::process::Command import
 
-    // If duration is less than 1 hour (3600 seconds), no need to split
-    if duration < 3600.0 {
-        return Ok(vec![video_path.to_string()]);
-    }
-
-    // Calculate number of segments needed (each segment should be < 1 hour)
-    let segment_duration = 3500.0; // 58 minutes and 20 seconds to be safe
-    let num_segments = (duration / segment_duration).ceil() as i32;
-
-    let mut segments = Vec::new();
-    let temp_dir = tempfile::tempdir()?;
-    let file_stem = Path::new(video_path)
-        .file_stem()
-        .and_then(|s| s.to_str())
-        .unwrap_or("video");
-    let file_extension = Path::new(video_path)
-        .extension()
-        .and_then(|s| s.to_str())
-        .unwrap_or("mp4");
-
-    for i in 0..num_segments {
-        let start_time = i as f64 * segment_duration;
-        let output_path = temp_dir.path().join(format!(
-            "{}_part_{:03}.{}",
-            file_stem,
-            i + 1,
-            file_extension
-        ));
-
-        // Use ffmpeg to split the video
-        let output = Command::new("ffmpeg")
-            .args(&[
-                "-i",
-                video_path,
-                "-ss",
-                &start_time.to_string(),
-                "-t",
-                &segment_duration.to_string(),
-                "-c",
-                "copy", // Copy without re-encoding for speed
-                "-avoid_negative_ts",
-                "make_zero",
-                output_path.to_str().unwrap(),
-                "-y", // Overwrite output files
-            ])
-            .output();
-
-        match output {
-            Ok(result) => {
-                if result.status.success() {
-                    segments.push(output_path.to_string_lossy().to_string());
-                } else {
-                    let stderr = String::from_utf8_lossy(&result.stderr);
-                    return Err(anyhow::anyhow!("ffmpeg failed: {}", stderr));
-                }
-            }
-            Err(e) => {
-                return Err(anyhow::anyhow!(
-                    "Failed to execute ffmpeg: {}. Make sure ffmpeg is installed and in your PATH.",
-                    e
-                ));
-            }
+fn find_executable(name: &str) -> Result<PathBuf> {
+    // First, check common paths for Homebrew
+    let common_paths = ["/opt/homebrew/bin", "/usr/local/bin"];
+    for path in common_paths.iter() {
+        let executable_path = Path::new(path).join(name);
+        if executable_path.is_file() {
+            return Ok(executable_path);
         }
     }
 
-    Ok(segments)
+    // If not found, use the `which` crate to search in PATH
+    which::which(name).map_err(|e| {
+        anyhow!(
+            "Failed to find '{}' executable: {}. Please ensure it is installed and in your PATH.",
+            name,
+            e
+        )
+    })
 }
 
 /// Gets the duration of a video file in seconds using ffprobe
 pub async fn get_video_duration(video_path: &str) -> Result<f64> {
-    let output = Command::new("ffprobe")
-        .args(&[
+    debug!("Getting video duration for: {}", video_path);
+    let ffprobe_path = find_executable("ffprobe")?;
+
+    let output = Command::new(&ffprobe_path)
+        .args([
             "-v",
-            "quiet",
+            "error",
             "-show_entries",
             "format=duration",
             "-of",
-            "csv=p=0",
+            "default=noprint_wrappers=1:nokey=1",
             video_path,
         ])
-        .output();
+        .output()?;
 
-    match output {
-        Ok(result) => {
-            if result.status.success() {
-                let duration_str = String::from_utf8_lossy(&result.stdout);
-                let duration: f64 = duration_str
-                    .trim()
-                    .parse()
-                    .map_err(|_| anyhow::anyhow!("Failed to parse duration"))?;
-                Ok(duration)
-            } else {
-                let stderr = String::from_utf8_lossy(&result.stderr);
-                Err(anyhow::anyhow!("ffprobe failed: {}", stderr))
-            }
-        }
-        Err(e) => Err(anyhow::anyhow!(
-            "Failed to execute ffprobe: {}. Make sure ffmpeg is installed and in your PATH.",
-            e
-        )),
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("ffprobe failed: {}", stderr));
     }
+
+    let duration_str = String::from_utf8(output.stdout)?.trim().to_string();
+    debug!("Got duration: {}", duration_str);
+
+    duration_str.parse::<f64>().map_err(|e| {
+        anyhow!(
+            "Failed to parse ffprobe duration output '{}': {}",
+            duration_str,
+            e
+        )
+    })
+}
+
+/// Splits a video file into segments if it's longer than 1 hour
+/// Returns a vector of file paths for the segments (or the original file if no split needed)
+pub async fn split_video_if_needed(video_path: &Path) -> Result<Vec<PathBuf>> {
+    let duration = get_video_duration(video_path.to_str().unwrap()).await?;
+    debug!("Video duration: {} seconds", duration);
+
+    if duration <= 3600.0 {
+        return Ok(vec![video_path.to_path_buf()]);
+    }
+
+    debug!("Video is longer than 1 hour, splitting...");
+    let ffmpeg_path = find_executable("ffmpeg")?;
+
+    let mut segment_paths = Vec::new();
+    let mut current_pos = 0.0;
+    let mut segment_index = 0;
+
+    while current_pos < duration {
+        let segment_filename = format!(
+            "{}_segment_{}.mp4",
+            video_path.file_stem().unwrap().to_str().unwrap(),
+            segment_index
+        );
+        let segment_path = video_path.parent().unwrap().join(&segment_filename);
+
+        let status = Command::new(&ffmpeg_path)
+            .args([
+                "-i",
+                video_path.to_str().unwrap(),
+                "-ss",
+                &current_pos.to_string(),
+                "-t",
+                "3600",
+                "-c",
+                "copy",
+                segment_path.to_str().unwrap(),
+            ])
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .status()?;
+
+        if !status.success() {
+            return Err(anyhow!("ffmpeg split failed for segment {}", segment_index));
+        }
+
+        segment_paths.push(segment_path);
+        current_pos += 3600.0;
+        segment_index += 1;
+    }
+
+    Ok(segment_paths)
 }
