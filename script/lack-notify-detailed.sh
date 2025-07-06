@@ -25,10 +25,19 @@ TIMESTAMP=$(date '+%Y-%m-%d %H:%M:%S')
 # JSONデータを読み込む
 JSON_INPUT=$(cat)
 
+# デバッグ情報の出力
+echo "DEBUG: JSON_INPUT length: ${#JSON_INPUT}" >&2
+echo "DEBUG: JSON_INPUT: $JSON_INPUT" >&2
+
 # 基本情報の抽出
 SESSION_ID=$(echo "$JSON_INPUT" | jq -r '.session_id // "N/A"')
 TOOL_NAME=$(echo "$JSON_INPUT" | jq -r '.tool_name // empty')
 EVENT_TYPE="${1:-PostToolUse}"  # デフォルトはPostToolUse
+
+# デバッグ情報の出力
+echo "DEBUG: SESSION_ID: $SESSION_ID" >&2
+echo "DEBUG: TOOL_NAME: '$TOOL_NAME'" >&2
+echo "DEBUG: EVENT_TYPE: $EVENT_TYPE" >&2
 
 # ツールに応じたメッセージとアイコンの生成
 case "$TOOL_NAME" in
@@ -111,11 +120,31 @@ case "$TOOL_NAME" in
         fi
         ;;
     *)
-        ICON=":gear:"
-        TITLE="${TOOL_NAME}を実行しました"
-        DETAILS="ツール: ${TOOL_NAME}"
+        # その他のツールまたは不明なケース
+        if [ -z "$TOOL_NAME" ]; then
+            ICON=":question:"
+            TITLE="不明な操作を実行しました"
+            DETAILS="詳細情報なし"
+        else
+            ICON=":gear:"
+            TITLE="${TOOL_NAME}を実行しました"
+            DETAILS="ツール: ${TOOL_NAME}"
+        fi
         ;;
 esac
+
+# デバッグ情報の出力
+echo "DEBUG: ICON: $ICON" >&2
+echo "DEBUG: TITLE: $TITLE" >&2
+echo "DEBUG: DETAILS: '$DETAILS'" >&2
+
+# 空のメッセージをチェック
+if [ -z "$TITLE" ] || [ -z "$DETAILS" ]; then
+    echo "エラー: 空のメッセージが生成されました" >&2
+    echo "TITLE: '$TITLE'" >&2
+    echo "DETAILS: '$DETAILS'" >&2
+    exit 1
+fi
 
 # Slack通知の送信
 RESPONSE=$(curl -s -X POST "$SLACK_WEBHOOK_URL" \

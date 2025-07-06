@@ -83,6 +83,8 @@ pub struct GeminiUploadResponse {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeminiFileInfo {
     pub name: String,
-    pub uri: String,
-    pub mime_type: String,
+    #[serde(default)]
+    pub uri: Option<String>,
+    #[serde(default)]
+    pub mime_type: Option<String>,
 }

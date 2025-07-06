@@ -7,12 +7,12 @@ use tokio::time::{sleep, Duration};
 
 use crate::types::{
     GeminiRequest, GeminiContent, GeminiPart, GeminiFileData, GeminiResponse,
-    GeminiUploadResponse, ProgressUpdate
+    GeminiUploadResponse, GeminiFileInfo, ProgressUpdate
 };
 
-// Extended GeminiFileInfo for internal use (different from types.rs)
+// Internal GeminiFileInfo for status polling (with optional fields)
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct GeminiFileInfo {
+pub struct GeminiFileStatus {
     pub name: String,
     #[serde(default)]
     pub display_name: Option<String>,
@@ -176,7 +176,8 @@ where
     }
 
     println!("✅ [UPLOAD] File upload completed successfully");
-    let upload_info: GeminiUploadResponse = upload_response.json().await?;
+    let upload_info: GeminiUploadResponse = upload_response.json().await
+        .map_err(|e| anyhow::anyhow!("Failed to parse upload response: {}", e))?;
     let file_name_on_server = upload_info.file.name.clone();
     println!(
         "📋 [UPLOAD] File registered on server as: {}",
@@ -215,7 +216,8 @@ where
             return Err(anyhow::anyhow!("Failed to get file status: {}", error_text));
         }
 
-        let file_info: GeminiFileInfo = get_response.json().await?;
+        let file_info: GeminiFileStatus = get_response.json().await
+            .map_err(|e| anyhow::anyhow!("Failed to parse file status response: {}", e))?;
 
         if let Some(state) = &file_info.state {
             println!("📊 [UPLOAD] File state: {}", state);
