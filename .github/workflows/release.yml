@@ -43,14 +43,18 @@ jobs:
       - name: Build frontend
         run: npm run build
 
+      - name: Get version from package.json
+        id: package-version
+        run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
+
       - name: Build the app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v__VERSION__
-          releaseName: 'Document Encoder v__VERSION__'
+          tagName: v${{ steps.package-version.outputs.version }}
+          releaseName: 'Document Encoder v${{ steps.package-version.outputs.version }}'
           releaseBody: 'See the assets to download and install this version.'
-          releaseDraft: true
+          releaseDraft: false
           prerelease: false
-          args: ${{ matrix.settings.args }}
+          includeUpdaterJson: true
