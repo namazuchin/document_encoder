@@ -14,3 +14,17 @@ export const generateFilename = (files: { name: string }[]): string => {
   const nameWithoutExt = filename.replace(/\.[^/.]+$/, "");
   return `${nameWithoutExt}.md`;
 };
+
+export const getDirectoryFromPath = (filePath: string): string => {
+  // Handle both Windows (\) and Unix (/) path separators
+  const lastBackslash = filePath.lastIndexOf('\\');
+  const lastSlash = filePath.lastIndexOf('/');
+  const lastSeparator = Math.max(lastBackslash, lastSlash);
+  
+  if (lastSeparator === -1) {
+    // No separator found, return empty string or current directory
+    return "";
+  }
+  
+  return filePath.substring(0, lastSeparator);
+};

@@ -9,6 +9,7 @@ export interface AppSettings {
   language: string;
   temperature: number;
   custom_prompt?: string;
+  gemini_model?: string;
 }
 
 export interface PromptPreset {

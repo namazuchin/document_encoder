@@ -192,6 +192,7 @@ async fn generate_document(
             &settings.gemini_api_key,
             settings.temperature,
             settings.custom_prompt.as_deref(),
+            &settings.gemini_model,
             &app,
             current_step,
             total_steps,
@@ -237,6 +238,7 @@ async fn generate_document(
             &settings.gemini_api_key,
             settings.temperature,
             settings.custom_prompt.as_deref(),
+            &settings.gemini_model,
         )
         .await
         {
@@ -295,6 +297,7 @@ async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(
         language: settings.language,
         temperature: settings.temperature,
         custom_prompt: settings.custom_prompt,
+        gemini_model: settings.gemini_model,
     };
 
     let config_json = serde_json::to_string_pretty(&safe_settings)
@@ -506,6 +509,12 @@ async fn save_prompt_presets(presets: Vec<PromptPreset>, app: tauri::AppHandle) 
 }
 
 fn save_prompt_presets_to_file(presets: &[PromptPreset], path: &Path) -> Result<(), String> {
+    // Ensure the parent directory exists
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent)
+            .map_err(|e| format!("Failed to create config directory: {}", e))?;
+    }
+    
     let mut xml_content = String::new();
     xml_content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml_content.push_str("<prompt_presets>\n");
