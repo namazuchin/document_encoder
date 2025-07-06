@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
-import { DocumentMode, VideoFile, AppSettings, PromptPreset, ProgressUpdate } from './types';
+import { VideoFile, AppSettings, PromptPreset, ProgressUpdate } from './types';
 import { generateFilename } from './utils/fileUtils';
 import { useLogger } from './hooks/useLogger';
 import ApiSettings from './components/ApiSettings';
@@ -13,7 +13,6 @@ import MainDashboard from './components/MainDashboard';
 function App() {
   const [selectedFiles, setSelectedFiles] = useState<VideoFile[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
-    mode: "manual",
     gemini_api_key: "",
     language: "japanese"
   });
@@ -27,6 +26,7 @@ function App() {
   const [saveDirectory, setSaveDirectory] = useState<string>("");
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
   const [promptPresets, setPromptPresets] = useState<PromptPreset[]>([]);
+  const [selectedPresetId, setSelectedPresetId] = useState<string>("");
   const [showPromptSettings, setShowPromptSettings] = useState(false);
   const [editingPreset, setEditingPreset] = useState<PromptPreset | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
@@ -100,6 +100,14 @@ function App() {
       const files = await invoke<VideoFile[]>("select_video_files");
       addLog(`✅ Selected ${files.length} files: ${files.map(f => f.name).join(", ")}`);
       setSelectedFiles(files);
+      
+      // 動画ファイルが選択された場合、最初のファイルのディレクトリを保存先として設定
+      if (files.length > 0 && files[0].path) {
+        const firstFilePath = files[0].path;
+        const directoryPath = firstFilePath.substring(0, firstFilePath.lastIndexOf('/'));
+        setSaveDirectory(directoryPath);
+        addLog(`📁 保存先を動画ディレクトリに設定: ${directoryPath}`);
+      }
     } catch (error) {
       addLog(`❌ Error selecting files: ${error}`);
       console.error("Error selecting files:", error);
@@ -107,7 +115,20 @@ function App() {
   };
 
   const handleRemoveFile = (index: number) => {
-    setSelectedFiles(files => files.filter((_, i) => i !== index));
+    const newFiles = selectedFiles.filter((_, i) => i !== index);
+    setSelectedFiles(newFiles);
+    
+    // すべてのファイルが削除された場合、保存先ディレクトリもクリア
+    if (newFiles.length === 0) {
+      setSaveDirectory("");
+      addLog("📁 すべてのファイルが削除されたため、保存先ディレクトリをクリアしました");
+    } else if (newFiles.length > 0 && newFiles[0].path) {
+      // 残りのファイルの最初のファイルのディレクトリを保存先として設定
+      const firstFilePath = newFiles[0].path;
+      const directoryPath = firstFilePath.substring(0, firstFilePath.lastIndexOf('/'));
+      setSaveDirectory(directoryPath);
+      addLog(`📁 保存先を更新: ${directoryPath}`);
+    }
   };
 
   const handleGenerateDocument = async () => {
@@ -220,6 +241,13 @@ function App() {
   };
 
   const handlePromptPresetSelect = (presetId: string) => {
+    setSelectedPresetId(presetId);
+    if (presetId === "") {
+      // 空の選択肢が選ばれた場合はプロンプトをクリア
+      setCurrentPrompt("");
+      return;
+    }
+    
     const preset = promptPresets.find(p => p.id === presetId);
     if (preset) {
       setCurrentPrompt(preset.prompt);
@@ -402,8 +430,18 @@ function App() {
       onFileSelect={handleFileSelect}
       onRemoveFile={handleRemoveFile}
       currentPrompt={currentPrompt}
-      onPromptChange={setCurrentPrompt}
+      onPromptChange={(prompt) => {
+        setCurrentPrompt(prompt);
+        // プロンプトが手動で編集された場合、プリセット選択をリセット
+        if (selectedPresetId) {
+          const selectedPreset = promptPresets.find(p => p.id === selectedPresetId);
+          if (selectedPreset && selectedPreset.prompt !== prompt) {
+            setSelectedPresetId("");
+          }
+        }
+      }}
       promptPresets={promptPresets}
+      selectedPresetId={selectedPresetId}
       onPromptPresetSelect={handlePromptPresetSelect}
       saveDirectory={saveDirectory}
       onSelectSaveDirectory={handleSelectSaveDirectory}
@@ -417,7 +455,6 @@ function App() {
       onToggleLogs={() => setShowLogs(!showLogs)}
       onClearLogs={clearLogs}
       generatedDocument={generatedDocument}
-      onSaveDocument={handleSaveDocument}
       onShowSettings={() => setShowSettings(true)}
       onShowPromptSettings={() => setShowPromptSettings(true)}
       generateFilename={generateFilename}

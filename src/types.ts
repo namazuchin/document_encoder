@@ -1,5 +1,3 @@
-export type DocumentMode = "manual" | "specification";
-
 export interface VideoFile {
   path: string;
   name: string;
@@ -7,7 +5,6 @@ export interface VideoFile {
 }
 
 export interface AppSettings {
-  mode: DocumentMode;
   gemini_api_key: string;
   language: string;
   custom_prompt?: string;

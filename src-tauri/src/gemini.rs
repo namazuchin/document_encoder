@@ -286,7 +286,6 @@ where
 
 pub async fn generate_with_gemini_with_progress(
     file_uris: &[String],
-    mode: &str,
     language: &str,
     api_key: &str,
     custom_prompt: Option<&str>,
@@ -305,12 +304,11 @@ pub async fn generate_with_gemini_with_progress(
         }
     };
 
-    generate_with_gemini_internal(file_uris, mode, language, api_key, custom_prompt, emit_progress).await
+    generate_with_gemini_internal(file_uris, language, api_key, custom_prompt, emit_progress).await
 }
 
 pub async fn generate_with_gemini_internal<F>(
     file_uris: &[String],
-    mode: &str,
     language: &str,
     api_key: &str,
     custom_prompt: Option<&str>,
@@ -321,8 +319,7 @@ where
 {
     println!("🤖 [GENERATE] Starting document generation with Gemini API");
     println!(
-        "📋 [GENERATE] Mode: {}, Language: {}, Files: {}",
-        mode,
+        "📋 [GENERATE] Language: {}, Files: {}",
         language,
         file_uris.len()
     );
@@ -337,27 +334,15 @@ where
             "japanese" | _ => "Please write the document in Japanese",
         };
 
-        match mode {
-            "manual" => format!("Please analyze the uploaded video(s) and create a comprehensive manual document. The document should include:
-            
-            1. Overview of the content
-            2. Step-by-step instructions for all procedures shown
-            3. Key points and important notes
-            4. Troubleshooting tips where applicable
-            
-            {} and format it in a clear, professional manner.", language_instruction),
-            "specification" => format!("Please analyze the uploaded video(s) and create a detailed specification document. The document should include:
-            
-            1. System overview and architecture
-            2. Functional specifications
-            3. Technical requirements
-            4. Interface specifications
-            5. Performance criteria
-            6. Implementation details
-            
-            {} and format it in a clear, professional manner.", language_instruction),
-            _ => format!("Please analyze the uploaded video(s) and create a comprehensive document based on the content. {}", language_instruction),
-        }
+        format!("Please analyze the uploaded video(s) and create a comprehensive document based on the content. The document should include:
+        
+        1. Overview of the content
+        2. Key points and important information
+        3. Step-by-step instructions or procedures if applicable
+        4. Technical details and specifications
+        5. Any relevant notes or recommendations
+        
+        {} and format it in a clear, professional manner.", language_instruction)
     };
 
     let mut parts = vec![GeminiPart::Text {
@@ -414,7 +399,6 @@ where
 
 pub async fn integrate_documents(
     documents: &[String],
-    mode: &str,
     language: &str,
     api_key: &str,
     custom_prompt: Option<&str>,
@@ -436,43 +420,16 @@ pub async fn integrate_documents(
             "japanese" | _ => "Please write the integrated document in Japanese",
         };
 
-        match mode {
-        "manual" => {
-            format!(
-                "Please integrate the following manual documents into one comprehensive, cohesive manual. \
-                Ensure proper flow, eliminate redundancy, and organize the content logically. {}:\n\n{}",
-                language_instruction,
-                documents.iter()
-                    .enumerate()
-                    .map(|(i, doc)| format!("=== Document {} ===\n{}\n", i + 1, doc))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        }
-        "specification" => {
-            format!(
-                "Please integrate the following specification documents into one comprehensive, cohesive specification. \
-                Ensure technical consistency, proper organization, and eliminate redundancy. {}:\n\n{}",
-                language_instruction,
-                documents.iter()
-                    .enumerate()
-                    .map(|(i, doc)| format!("=== Specification Part {} ===\n{}\n", i + 1, doc))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        }
-        _ => {
-            format!(
-                "Please integrate the following documents into one comprehensive document. {}:\n\n{}",
-                language_instruction,
-                documents.iter()
-                    .enumerate()
-                    .map(|(i, doc)| format!("=== Document {} ===\n{}\n", i + 1, doc))
-                    .collect::<Vec<_>>()
-                    .join("\n")
-            )
-        }
-        }
+        format!(
+            "Please integrate the following documents into one comprehensive, cohesive document. \
+            Ensure proper flow, eliminate redundancy, organize the content logically, and maintain consistency throughout. {}:\n\n{}",
+            language_instruction,
+            documents.iter()
+                .enumerate()
+                .map(|(i, doc)| format!("=== Document {} ===\n{}\n", i + 1, doc))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
     };
 
     let request = GeminiRequest {

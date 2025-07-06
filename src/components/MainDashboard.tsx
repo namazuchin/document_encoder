@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { DocumentMode, VideoFile, AppSettings, PromptPreset } from '../types';
+import { VideoFile, AppSettings, PromptPreset } from '../types';
 
 interface MainDashboardProps {
   settings: AppSettings;
@@ -10,6 +10,7 @@ interface MainDashboardProps {
   currentPrompt: string;
   onPromptChange: (prompt: string) => void;
   promptPresets: PromptPreset[];
+  selectedPresetId: string;
   onPromptPresetSelect: (presetId: string) => void;
   saveDirectory: string;
   onSelectSaveDirectory: () => void;
@@ -23,7 +24,6 @@ interface MainDashboardProps {
   onToggleLogs: () => void;
   onClearLogs: () => void;
   generatedDocument: string;
-  onSaveDocument: () => void;
   onShowSettings: () => void;
   onShowPromptSettings: () => void;
   generateFilename: (files: VideoFile[]) => string;
@@ -38,6 +38,7 @@ export default function MainDashboard({
   currentPrompt,
   onPromptChange,
   promptPresets,
+  selectedPresetId,
   onPromptPresetSelect,
   saveDirectory,
   onSelectSaveDirectory,
@@ -51,7 +52,6 @@ export default function MainDashboard({
   onToggleLogs,
   onClearLogs,
   generatedDocument,
-  onSaveDocument,
   onShowSettings,
   onShowPromptSettings,
   generateFilename
@@ -64,11 +64,6 @@ export default function MainDashboard({
     const sizes = ["B", "KB", "MB", "GB"];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + " " + sizes[i];
-  };
-
-  const handleModeChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newSettings = { ...settings, mode: e.target.value as DocumentMode };
-    onUpdateSettings(newSettings);
   };
 
   const handleLanguageChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
@@ -90,35 +85,6 @@ export default function MainDashboard({
         </div>
       </header>
 
-      <div className="mode-language-section">
-        <h2>ドキュメント設定</h2>
-        <div className="settings-row">
-          <div className="setting-group">
-            <label htmlFor="mode">ドキュメントモード:</label>
-            <select 
-              id="mode"
-              value={settings.mode}
-              onChange={handleModeChange}
-            >
-              <option value="manual">マニュアル作成モード</option>
-              <option value="specification">仕様書作成モード</option>
-            </select>
-          </div>
-          
-          <div className="setting-group">
-            <label htmlFor="language">出力言語:</label>
-            <select 
-              id="language"
-              value={settings.language}
-              onChange={handleLanguageChange}
-            >
-              <option value="japanese">日本語</option>
-              <option value="english">English</option>
-            </select>
-          </div>
-        </div>
-      </div>
-
       <div className="prompt-section">
         <h2>プロンプト設定</h2>
         <div className="prompt-controls">
@@ -127,12 +93,23 @@ export default function MainDashboard({
             <select 
               id="presetSelect"
               onChange={(e) => onPromptPresetSelect(e.target.value)}
-              value=""
+              value={selectedPresetId}
             >
               <option value="">プリセットを選択...</option>
               {promptPresets.map(preset => (
                 <option key={preset.id} value={preset.id}>{preset.name}</option>
               ))}
+            </select>
+          </div>
+          <div className="setting-group">
+            <label htmlFor="language">ドキュメント出力言語:</label>
+            <select 
+              id="language"
+              value={settings.language}
+              onChange={handleLanguageChange}
+            >
+              <option value="japanese">日本語</option>
+              <option value="english">English</option>
             </select>
           </div>
           <div className="prompt-editor">
@@ -176,7 +153,7 @@ export default function MainDashboard({
       <div className="save-directory-section">
         <h2>保存設定</h2>
         <button className="directory-select-btn" onClick={onSelectSaveDirectory}>
-          {saveDirectory ? "保存先を変更" : "保存先ディレクトリを選択"}
+          保存先を変更
         </button>
         {saveDirectory && (
           <p className="directory-preview">
@@ -257,16 +234,7 @@ export default function MainDashboard({
 
       {generatedDocument && (
         <div className="result-section">
-          <div className="result-header">
-            <h2>生成結果</h2>
-            <button 
-              className="save-btn"
-              onClick={onSaveDocument}
-              disabled={!saveDirectory}
-            >
-              再保存
-            </button>
-          </div>
+          <h2>生成結果</h2>
           <div className="document-content">
             <pre>{generatedDocument}</pre>
           </div>

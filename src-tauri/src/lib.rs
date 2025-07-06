@@ -38,8 +38,8 @@ async fn generate_document(
         files.len()
     );
     println!(
-        "📋 [BACKEND] Settings: mode={}, language={}",
-        settings.mode, settings.language
+        "📋 [BACKEND] Settings: language={}",
+        settings.language
     );
 
     // Calculate total steps for progress tracking
@@ -188,7 +188,6 @@ async fn generate_document(
         );
         match generate_with_gemini_with_progress(
             &[file_uri.clone()],
-            &settings.mode,
             &settings.language,
             &settings.gemini_api_key,
             settings.custom_prompt.as_deref(),
@@ -233,7 +232,6 @@ async fn generate_document(
         );
         match integrate_documents(
             &documents,
-            &settings.mode,
             &settings.language,
             &settings.gemini_api_key,
             settings.custom_prompt.as_deref(),
@@ -291,7 +289,6 @@ async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(
 
     // Encrypt sensitive data before saving
     let safe_settings = AppSettings {
-        mode: settings.mode,
         gemini_api_key: encrypt_api_key(&settings.gemini_api_key),
         language: settings.language,
         custom_prompt: settings.custom_prompt,

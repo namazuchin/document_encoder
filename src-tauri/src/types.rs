@@ -9,7 +9,6 @@ pub struct VideoFile {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
-    pub mode: String,
     pub gemini_api_key: String,
     #[serde(default = "default_language")]
     pub language: String,
