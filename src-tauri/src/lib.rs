@@ -144,6 +144,46 @@ async fn select_video_files(app: tauri::AppHandle) -> Result<Vec<VideoFile>, Str
 }
 
 #[tauri::command]
+async fn select_save_directory(app: tauri::AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    use tokio::sync::oneshot;
+
+    let (tx, rx) = oneshot::channel();
+
+    app.dialog()
+        .file()
+        .set_title("保存先ディレクトリを選択")
+        .pick_folder(move |folder| {
+            let _ = tx.send(folder);
+        });
+
+    let folder = rx
+        .await
+        .map_err(|e| format!("Failed to receive dialog result: {}", e))?;
+
+    match folder {
+        Some(path) => Ok(Some(path.to_string())),
+        None => Ok(None),
+    }
+}
+
+#[tauri::command]
+async fn save_document_to_file(
+    content: String,
+    save_path: String,
+    filename: String,
+) -> Result<String, String> {
+    use std::path::Path;
+
+    let full_path = Path::new(&save_path).join(&filename);
+    
+    fs::write(&full_path, content)
+        .map_err(|e| format!("Failed to save document: {}", e))?;
+    
+    Ok(full_path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
 async fn generate_document(
     files: Vec<VideoFile>,
     settings: AppSettings,
@@ -1081,7 +1121,9 @@ pub fn run() {
             select_video_files,
             generate_document,
             save_settings,
-            load_settings
+            load_settings,
+            select_save_directory,
+            save_document_to_file
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

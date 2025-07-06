@@ -254,6 +254,69 @@
   text-align: center;
 }
 
+.save-directory-section {
+  margin-bottom: 30px;
+  padding: 15px;
+  background: #f8f9fa;
+  border: 1px solid #dee2e6;
+  border-radius: 4px;
+}
+
+.save-directory-section h2 {
+  margin-bottom: 15px;
+  color: #333;
+}
+
+.directory-select-btn {
+  background: #17a2b8;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 10px 20px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-bottom: 10px;
+}
+
+.directory-select-btn:hover {
+  background: #138496;
+}
+
+.filename-preview {
+  margin: 0;
+  color: #6c757d;
+  font-size: 14px;
+  font-style: italic;
+}
+
+.result-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+.save-btn {
+  background: #fd7e14;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  padding: 8px 16px;
+  font-size: 14px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.save-btn:hover:not(:disabled) {
+  background: #e8690b;
+}
+
+.save-btn:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
 .generate-btn {
   background: #28a745;
   color: white;
@@ -461,6 +524,19 @@
   }
 
   .log-empty {
+    color: #adb5bd;
+  }
+
+  .save-directory-section {
+    background: #3f3f3f;
+    border-color: #555;
+  }
+
+  .save-directory-section h2 {
+    color: #f6f6f6;
+  }
+
+  .filename-preview {
     color: #adb5bd;
   }
 }
