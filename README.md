@@ -2,7 +2,7 @@
 
 動画ファイルからAI（Gemini Pro）を使ってドキュメント（マニュアル・仕様書）を自動生成するデスクトップアプリケーションです。
 
-![icon](./doc/icon.png)
+<img src="./doc/icon.png" width="256" />
 
 ## 概要
 
