@@ -1,4 +1,3 @@
-import React from 'react';
 import { AppSettings } from '../types';
 
 interface ApiSettingsProps {
