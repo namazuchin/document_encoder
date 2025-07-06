@@ -54,29 +54,29 @@ Rustバックエンドは機能別にモジュール化され、保守性と可�
 
 #### 3.1.1. モジュール一覧
 
-- **`lib.rs`** (391行) - メインライブラリファイル
+- **`lib.rs`** （391行） - メインライブラリファイル
   - Tauriコマンドの定義とアプリケーション設定
   - モジュール間の調整とイベント処理
   - アプリケーション起動時の初期化処理
 
-- **`types.rs`** (71行) - 型定義モジュール
+- **`types.rs`** （71行） - 型定義モジュール
   - `VideoFile` - 動画ファイル情報の構造体
   - `AppSettings` - アプリケーション設定の構造体
   - `ProgressUpdate` - 進捗更新情報の構造体
   - `Gemini*` - Gemini API関連の型定義群
 
-- **`file.rs`** (90行) - ファイル操作モジュール
+- **`file.rs`** （90行） - ファイル操作モジュール
   - `select_video_files()` - 動画ファイル選択ダイアログ
   - `select_save_directory()` - 保存先ディレクトリ選択ダイアログ
   - `save_document_to_file()` - ドキュメントファイル保存処理
 
-- **`gemini.rs`** (509行) - Gemini API連携モジュール
+- **`gemini.rs`** （509行） - Gemini API連携モジュール
   - `upload_to_gemini_with_progress()` - 進捗付きファイルアップロード
   - `generate_with_gemini_with_progress()` - 進捗付きドキュメント生成
   - `integrate_documents()` - 複数ドキュメントの統合処理
   - `get_mime_type()` - ファイル形式判定ヘルパー
 
-- **`video.rs`** (213行) - 動画処理モジュール
+- **`video.rs`** （213行） - 動画処理モジュール
   - `split_video_if_needed()` - 長時間動画の自動分割（1時間超の場合）
   - `get_video_duration()` - ffprobeによる動画時間取得
   - `check_video_compatibility()` - 動画ファイル互換性チェック
@@ -88,13 +88,13 @@ Rustバックエンドは機能別にモジュール化され、保守性と可�
 
 ```
 lib.rs
-├── types.rs (型定義を参照)
-├── file.rs (ファイル操作を呼び出し)
-├── gemini.rs (API処理を呼び出し)
-└── video.rs (動画処理を呼び出し)
+├── types.rs （型定義を参照）
+├── file.rs （ファイル操作を呼び出し）
+├── gemini.rs （API処理を呼び出し）
+└── video.rs （動画処理を呼び出し）
 
-gemini.rs → types.rs (型定義を参照)
-file.rs → types.rs (VideoFile型を参照)
+gemini.rs → types.rs （型定義を参照）
+file.rs → types.rs （VideoFile型を参照）
 video.rs → 独立モジュール
 ```
 
