@@ -48,6 +48,266 @@
   background: #e8e8e8;
 }
 
+.header-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.prompt-section {
+  margin-bottom: 30px;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+}
+
+.prompt-section h2 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.prompt-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 15px;
+}
+
+.preset-selector {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.preset-selector label {
+  font-weight: 500;
+  color: #555;
+}
+
+.preset-selector select {
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  font-size: 14px;
+}
+
+.prompt-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.prompt-editor label {
+  font-weight: 500;
+  color: #555;
+}
+
+.prompt-editor textarea {
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: monospace;
+  resize: vertical;
+  min-height: 100px;
+}
+
+.preset-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 15px 0;
+  max-height: 300px;
+  overflow-y: auto;
+  border: 1px solid #e0e0e0;
+  border-radius: 4px;
+  padding: 10px;
+}
+
+.preset-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px;
+  background: #f9f9f9;
+  border-radius: 4px;
+  border: 1px solid #e8e8e8;
+}
+
+.preset-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+}
+
+.preset-name {
+  font-weight: 500;
+  color: #333;
+}
+
+.preset-preview {
+  font-size: 12px;
+  color: #666;
+  font-style: italic;
+}
+
+.preset-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.preset-actions button {
+  padding: 4px 8px;
+  font-size: 12px;
+  border: 1px solid #ddd;
+  border-radius: 3px;
+  background: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.preset-actions button:hover {
+  background: #f0f0f0;
+}
+
+.preset-actions button.deleting,
+.preset-actions button:disabled {
+  background: #ff6b6b;
+  color: white;
+  cursor: not-allowed;
+  border-color: #ff5252;
+}
+
+.preset-actions button.deleting:hover,
+.preset-actions button:disabled:hover {
+  background: #ff5252;
+}
+
+.preset-default {
+  border-color: #007acc;
+  background: #f8fcff;
+}
+
+.default-badge {
+  font-size: 10px;
+  background: #007acc;
+  color: white;
+  padding: 2px 6px;
+  border-radius: 3px;
+  margin-left: 8px;
+  font-weight: normal;
+}
+
+
+.modal-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1000;
+}
+
+.modal-content {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  min-width: 500px;
+  max-width: 90vw;
+  max-height: 90vh;
+  overflow-y: auto;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+.modal-content h3 {
+  margin-top: 0;
+  margin-bottom: 20px;
+  color: #333;
+}
+
+.modal-content .form-group {
+  margin-bottom: 16px;
+}
+
+.modal-content .form-group label {
+  display: block;
+  margin-bottom: 6px;
+  font-weight: 500;
+  color: #555;
+}
+
+.modal-content .form-group input,
+.modal-content .form-group textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.modal-content .form-group textarea {
+  font-family: monospace;
+  resize: vertical;
+  min-height: 120px;
+}
+
+.modal-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.modal-buttons button {
+  padding: 8px 16px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.modal-buttons button:first-child {
+  background: #007acc;
+  color: white;
+  border-color: #007acc;
+}
+
+.modal-buttons button:first-child:hover {
+  background: #005f99;
+}
+
+.modal-buttons button:hover {
+  background: #f0f0f0;
+}
+
+.delete-confirm {
+  max-width: 400px;
+}
+
+.warning-text {
+  color: #ff6b6b;
+  font-weight: 500;
+  margin: 10px 0;
+}
+
+.delete-confirm-btn {
+  background: #ff6b6b !important;
+  color: white !important;
+  border-color: #ff5252 !important;
+}
+
+.delete-confirm-btn:hover {
+  background: #ff5252 !important;
+}
+
 .file-selection {
   margin-bottom: 30px;
 }

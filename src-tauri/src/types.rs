@@ -13,6 +13,8 @@ pub struct AppSettings {
     pub gemini_api_key: String,
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(default)]
+    pub custom_prompt: Option<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +26,20 @@ pub struct ProgressUpdate {
 
 pub fn default_language() -> String {
     "japanese".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptPreset {
+    pub id: String,
+    pub name: String,
+    pub prompt: String,
+    #[serde(default)]
+    pub is_default: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PromptPresets {
+    pub presets: Vec<PromptPreset>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -287,6 +287,7 @@ pub async fn generate_with_gemini_with_progress(
     mode: &str,
     language: &str,
     api_key: &str,
+    custom_prompt: Option<&str>,
     app: &tauri::AppHandle,
     base_step: usize,
     total_steps: usize,
@@ -302,7 +303,7 @@ pub async fn generate_with_gemini_with_progress(
         }
     };
 
-    generate_with_gemini_internal(file_uris, mode, language, api_key, emit_progress).await
+    generate_with_gemini_internal(file_uris, mode, language, api_key, custom_prompt, emit_progress).await
 }
 
 pub async fn generate_with_gemini_internal<F>(
@@ -310,6 +311,7 @@ pub async fn generate_with_gemini_internal<F>(
     mode: &str,
     language: &str,
     api_key: &str,
+    custom_prompt: Option<&str>,
     emit_progress: F,
 ) -> Result<String>
 where
@@ -325,31 +327,35 @@ where
     emit_progress("AIによるドキュメント生成を準備中...".to_string());
     let client = reqwest::Client::new();
 
-    let language_instruction = match language {
-        "english" => "Please write the document in English",
-        "japanese" | _ => "Please write the document in Japanese",
-    };
+    let prompt = if let Some(custom) = custom_prompt {
+        custom.to_string()
+    } else {
+        let language_instruction = match language {
+            "english" => "Please write the document in English",
+            "japanese" | _ => "Please write the document in Japanese",
+        };
 
-    let prompt = match mode {
-        "manual" => format!("Please analyze the uploaded video(s) and create a comprehensive manual document. The document should include:
-        
-        1. Overview of the content
-        2. Step-by-step instructions for all procedures shown
-        3. Key points and important notes
-        4. Troubleshooting tips where applicable
-        
-        {} and format it in a clear, professional manner.", language_instruction),
-        "specification" => format!("Please analyze the uploaded video(s) and create a detailed specification document. The document should include:
-        
-        1. System overview and architecture
-        2. Functional specifications
-        3. Technical requirements
-        4. Interface specifications
-        5. Performance criteria
-        6. Implementation details
-        
-        {} and format it in a clear, professional manner.", language_instruction),
-        _ => format!("Please analyze the uploaded video(s) and create a comprehensive document based on the content. {}", language_instruction),
+        match mode {
+            "manual" => format!("Please analyze the uploaded video(s) and create a comprehensive manual document. The document should include:
+            
+            1. Overview of the content
+            2. Step-by-step instructions for all procedures shown
+            3. Key points and important notes
+            4. Troubleshooting tips where applicable
+            
+            {} and format it in a clear, professional manner.", language_instruction),
+            "specification" => format!("Please analyze the uploaded video(s) and create a detailed specification document. The document should include:
+            
+            1. System overview and architecture
+            2. Functional specifications
+            3. Technical requirements
+            4. Interface specifications
+            5. Performance criteria
+            6. Implementation details
+            
+            {} and format it in a clear, professional manner.", language_instruction),
+            _ => format!("Please analyze the uploaded video(s) and create a comprehensive document based on the content. {}", language_instruction),
+        }
     };
 
     let mut parts = vec![GeminiPart::Text {
@@ -409,15 +415,26 @@ pub async fn integrate_documents(
     mode: &str,
     language: &str,
     api_key: &str,
+    custom_prompt: Option<&str>,
 ) -> Result<String> {
     let client = reqwest::Client::new();
 
-    let language_instruction = match language {
-        "english" => "Please write the integrated document in English",
-        "japanese" | _ => "Please write the integrated document in Japanese",
-    };
+    let integration_prompt = if let Some(custom) = custom_prompt {
+        format!("{}\n\n=== Documents to integrate ===\n{}", 
+            custom, 
+            documents.iter()
+                .enumerate()
+                .map(|(i, doc)| format!("=== Document {} ===\n{}\n", i + 1, doc))
+                .collect::<Vec<_>>()
+                .join("\n")
+        )
+    } else {
+        let language_instruction = match language {
+            "english" => "Please write the integrated document in English",
+            "japanese" | _ => "Please write the integrated document in Japanese",
+        };
 
-    let integration_prompt = match mode {
+        match mode {
         "manual" => {
             format!(
                 "Please integrate the following manual documents into one comprehensive, cohesive manual. \
@@ -452,6 +469,7 @@ pub async fn integrate_documents(
                     .collect::<Vec<_>>()
                     .join("\n")
             )
+        }
         }
     };
 
