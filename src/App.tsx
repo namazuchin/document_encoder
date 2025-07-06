@@ -262,32 +262,8 @@ function App() {
   if (showSettings) {
     return (
       <main className="container">
-        <h1>設定</h1>
+        <h1>API設定</h1>
         <div className="settings-form">
-          <div className="form-group">
-            <label htmlFor="mode">ドキュメントモード:</label>
-            <select 
-              id="mode"
-              value={settings.mode}
-              onChange={(e) => setSettings(prev => ({ ...prev, mode: e.target.value as DocumentMode }))}
-            >
-              <option value="manual">マニュアル作成モード</option>
-              <option value="specification">仕様書作成モード</option>
-            </select>
-          </div>
-          
-          <div className="form-group">
-            <label htmlFor="language">出力言語:</label>
-            <select 
-              id="language"
-              value={settings.language}
-              onChange={(e) => setSettings(prev => ({ ...prev, language: e.target.value }))}
-            >
-              <option value="japanese">日本語</option>
-              <option value="english">English</option>
-            </select>
-          </div>
-          
           <div className="form-group">
             <label htmlFor="apiKey">Gemini API Key:</label>
             <input
@@ -313,9 +289,56 @@ function App() {
       <header className="header">
         <h1>Document Encoder</h1>
         <button className="settings-btn" onClick={() => setShowSettings(true)}>
-          設定
+          API設定
         </button>
       </header>
+
+      <div className="mode-language-section">
+        <h2>ドキュメント設定</h2>
+        <div className="settings-row">
+          <div className="setting-group">
+            <label htmlFor="mode">ドキュメントモード:</label>
+            <select 
+              id="mode"
+              value={settings.mode}
+              onChange={async (e) => {
+                const newSettings = { ...settings, mode: e.target.value as DocumentMode };
+                setSettings(newSettings);
+                try {
+                  await invoke("save_settings", { settings: newSettings });
+                  addLog(`✅ ドキュメントモードを変更: ${e.target.value === "manual" ? "マニュアル作成" : "仕様書作成"}`);
+                } catch (error) {
+                  addLog(`❌ 設定保存エラー: ${error}`);
+                }
+              }}
+            >
+              <option value="manual">マニュアル作成モード</option>
+              <option value="specification">仕様書作成モード</option>
+            </select>
+          </div>
+          
+          <div className="setting-group">
+            <label htmlFor="language">出力言語:</label>
+            <select 
+              id="language"
+              value={settings.language}
+              onChange={async (e) => {
+                const newSettings = { ...settings, language: e.target.value };
+                setSettings(newSettings);
+                try {
+                  await invoke("save_settings", { settings: newSettings });
+                  addLog(`✅ 出力言語を変更: ${e.target.value === "japanese" ? "日本語" : "English"}`);
+                } catch (error) {
+                  addLog(`❌ 設定保存エラー: ${error}`);
+                }
+              }}
+            >
+              <option value="japanese">日本語</option>
+              <option value="english">English</option>
+            </select>
+          </div>
+        </div>
+      </div>
 
       <div className="file-selection">
         <h2>動画ファイル選択</h2>
@@ -342,19 +365,17 @@ function App() {
         )}
       </div>
 
-      <div className="mode-indicator">
-        <p>現在のモード: {settings.mode === "manual" ? "マニュアル作成" : "仕様書作成"}</p>
-        <p>出力言語: {settings.language === "japanese" ? "日本語" : "English"}</p>
-        {saveDirectory && (
-          <p>保存先: {saveDirectory}</p>
-        )}
-      </div>
 
       <div className="save-directory-section">
         <h2>保存設定</h2>
         <button className="directory-select-btn" onClick={handleSelectSaveDirectory}>
           {saveDirectory ? "保存先を変更" : "保存先ディレクトリを選択"}
         </button>
+        {saveDirectory && (
+          <p className="directory-preview">
+            保存先: {saveDirectory}
+          </p>
+        )}
         {selectedFiles.length > 0 && (
           <p className="filename-preview">
             生成ファイル名: {generateFilename(selectedFiles)}
