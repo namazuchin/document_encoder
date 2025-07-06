@@ -6,17 +6,15 @@ on:
   workflow_dispatch:
 
 jobs:
-  release:
-    permissions:
-      contents: write
+  build:
     strategy:
       fail-fast: false
       matrix:
         settings:
-          - platform: 'macos-latest'
-            args: ''
-          - platform: 'windows-latest'
-            args: ''
+          - platform: "macos-latest"
+            args: ""
+          - platform: "windows-latest"
+            args: ""
 
     runs-on: ${{ matrix.settings.platform }}
     steps:
@@ -29,13 +27,13 @@ jobs:
       - name: Rust cache
         uses: swatinem/rust-cache@v2
         with:
-          workspaces: './src-tauri -> target'
+          workspaces: "./src-tauri -> target"
 
       - name: Node.js setup
         uses: actions/setup-node@v4
         with:
           node-version: 18
-          cache: 'npm'
+          cache: "npm"
 
       - name: Install frontend dependencies
         run: npm ci
@@ -45,16 +43,79 @@ jobs:
 
       - name: Get version from package.json
         id: package-version
+        shell: bash
         run: echo "version=$(node -p "require('./package.json').version")" >> $GITHUB_OUTPUT
 
-      - name: Build the app
+      - name: Build Tauri app
         uses: tauri-apps/tauri-action@v0
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
-          tagName: v${{ steps.package-version.outputs.version }}
-          releaseName: 'Document Encoder v${{ steps.package-version.outputs.version }}'
-          releaseBody: 'See the assets to download and install this version.'
-          releaseDraft: false
+          args: ${{ matrix.settings.args }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: artifacts-${{ matrix.settings.platform }}
+          path: |
+            src-tauri/target/release/bundle/
+          retention-days: 1
+
+      - name: Output version
+        shell: bash
+        run: echo "${{ steps.package-version.outputs.version }}" > version.txt
+
+      - name: Upload version info
+        uses: actions/upload-artifact@v4
+        with:
+          name: version-${{ matrix.settings.platform }}
+          path: version.txt
+          retention-days: 1
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Get version
+        id: get-version
+        run: |
+          VERSION=$(cat version-*/version.txt | head -n 1)
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
+
+      - name: Display structure of downloaded files
+        run: ls -la
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+
+          # macOS artifacts
+          if [ -d "artifacts-macos-latest" ]; then
+            find artifacts-macos-latest -name "*.dmg" -exec cp {} release-assets/ \;
+            find artifacts-macos-latest -name "*.app.tar.gz" -exec cp {} release-assets/ \;
+          fi
+
+          # Windows artifacts
+          if [ -d "artifacts-windows-latest" ]; then
+            find artifacts-windows-latest -name "*.msi" -exec cp {} release-assets/ \;
+            find artifacts-windows-latest -name "*.exe" -exec cp {} release-assets/ \;
+          fi
+
+          ls -la release-assets/
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: v${{ steps.get-version.outputs.version }}
+          name: Document Encoder v${{ steps.get-version.outputs.version }}
+          body: "See the assets to download and install this version."
+          draft: false
           prerelease: false
-          includeUpdaterJson: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
