@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 import { VideoFile, AppSettings, PromptPreset, ProgressUpdate } from './types';
-import { generateFilename } from './utils/fileUtils';
+import { generateFilename, getDirectoryFromPath } from './utils/fileUtils';
 import { useLogger } from './hooks/useLogger';
 import ApiSettings from './components/ApiSettings';
 import PromptSettings from './components/PromptSettings';
@@ -15,7 +15,8 @@ function App() {
   const [settings, setSettings] = useState<AppSettings>({
     gemini_api_key: "",
     language: "japanese",
-    temperature: 0
+    temperature: 0,
+    gemini_model: "gemini-2.5-pro"
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [generatedDocument, setGeneratedDocument] = useState("");
@@ -80,7 +81,7 @@ function App() {
       // 動画ファイルが選択された場合、最初のファイルのディレクトリを保存先として設定
       if (files.length > 0 && files[0].path) {
         const firstFilePath = files[0].path;
-        const directoryPath = firstFilePath.substring(0, firstFilePath.lastIndexOf('/'));
+        const directoryPath = getDirectoryFromPath(firstFilePath);
         setSaveDirectory(directoryPath);
         addLog(`📁 保存先を動画ディレクトリに設定: ${directoryPath}`);
       }
@@ -101,7 +102,7 @@ function App() {
     } else if (newFiles.length > 0 && newFiles[0].path) {
       // 残りのファイルの最初のファイルのディレクトリを保存先として設定
       const firstFilePath = newFiles[0].path;
-      const directoryPath = firstFilePath.substring(0, firstFilePath.lastIndexOf('/'));
+      const directoryPath = getDirectoryFromPath(firstFilePath);
       setSaveDirectory(directoryPath);
       addLog(`📁 保存先を更新: ${directoryPath}`);
     }
@@ -196,6 +197,10 @@ function App() {
     try {
       const savedSettings = await invoke<AppSettings | null>("load_settings");
       if (savedSettings) {
+        // Ensure gemini_model has a default value if not set
+        if (!savedSettings.gemini_model) {
+          savedSettings.gemini_model = "gemini-2.5-pro";
+        }
         setSettings(savedSettings);
         addLog(`✅ Settings loaded successfully`);
       }

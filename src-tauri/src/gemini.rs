@@ -290,6 +290,7 @@ pub async fn generate_with_gemini_with_progress(
     api_key: &str,
     temperature: f64,
     custom_prompt: Option<&str>,
+    model: &str,
     app: &tauri::AppHandle,
     base_step: usize,
     total_steps: usize,
@@ -305,7 +306,7 @@ pub async fn generate_with_gemini_with_progress(
         }
     };
 
-    generate_with_gemini_internal(file_uris, language, api_key, temperature, custom_prompt, emit_progress).await
+    generate_with_gemini_internal(file_uris, language, api_key, temperature, custom_prompt, model, emit_progress).await
 }
 
 pub async fn generate_with_gemini_internal<F>(
@@ -314,6 +315,7 @@ pub async fn generate_with_gemini_internal<F>(
     api_key: &str,
     temperature: f64,
     custom_prompt: Option<&str>,
+    model: &str,
     emit_progress: F,
 ) -> Result<String>
 where
@@ -374,7 +376,7 @@ where
     println!("🌐 [GENERATE] Sending request to Gemini API...");
     emit_progress("Gemini AIにドキュメント生成を依頼中...".to_string());
     let response = client
-        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-06-05:generateContent?key={}", api_key))
+        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", model, api_key))
         .json(&request)
         .send()
         .await?;
@@ -412,6 +414,7 @@ pub async fn integrate_documents(
     api_key: &str,
     temperature: f64,
     custom_prompt: Option<&str>,
+    model: &str,
 ) -> Result<String> {
     let client = reqwest::Client::new();
 
@@ -458,7 +461,7 @@ pub async fn integrate_documents(
     };
 
     let response = client
-        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro-preview-06-05:generateContent?key={}", api_key))
+        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", model, api_key))
         .json(&request)
         .send()
         .await?;

@@ -41,6 +41,22 @@ export default function ApiSettings({ settings, onUpdateSettings, onClose, onSav
             </small>
           </div>
           
+          <div className="form-group">
+            <label htmlFor="geminiModel">Gemini Model:</label>
+            <select
+              id="geminiModel"
+              value={settings.gemini_model || 'gemini-2.5-pro'}
+              onChange={(e) => onUpdateSettings({ ...settings, gemini_model: e.target.value })}
+            >
+              <option value="gemini-2.5-pro">gemini-2.5-pro</option>
+              <option value="gemini-2.5-flash">gemini-2.5-flash</option>
+              <option value="gemini-2.5-pro-preview-06-05">gemini-2.5-pro-preview-06-05</option>
+            </select>
+            <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+              使用するGeminiモデルを選択してください、flashモデルでの生成精度は使い物にならない程度に低いので注意してください。
+            </small>
+          </div>
+          
           <div className="button-group">
             <button onClick={onSave}>保存</button>
             <button onClick={onClose}>キャンセル</button>
