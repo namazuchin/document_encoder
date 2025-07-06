@@ -50,7 +50,7 @@
       "icons/icon.ico"
     ],
     "macOS": {
-      "hardenedRuntime": false,
+      "hardenedRuntime": true,
       "entitlements": null,
       "exceptionDomain": null,
       "signingIdentity": null,
