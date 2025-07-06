@@ -52,31 +52,6 @@ function App() {
     }
   };
 
-  const handleSaveDocument = async () => {
-    if (!generatedDocument) {
-      addLog("❌ 保存するドキュメントがありません");
-      return;
-    }
-
-    if (!saveDirectory) {
-      addLog("❌ 保存先ディレクトリが選択されていません");
-      return;
-    }
-
-    try {
-      const filename = generateFilename(selectedFiles);
-      const savedPath = await invoke<string>("save_document_to_file", {
-        content: generatedDocument,
-        savePath: saveDirectory,
-        filename: filename
-      });
-      addLog(`✅ ドキュメントを保存しました: ${savedPath}`);
-    } catch (error) {
-      addLog(`❌ ドキュメント保存エラー: ${error}`);
-      console.error("Error saving document:", error);
-    }
-  };
-
   useEffect(() => {
     loadSettings();
     loadPromptPresets();
