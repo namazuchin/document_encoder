@@ -12,6 +12,8 @@ pub struct AppSettings {
     pub gemini_api_key: String,
     #[serde(default = "default_language")]
     pub language: String,
+    #[serde(default = "default_temperature")]
+    pub temperature: f64,
     #[serde(default)]
     pub custom_prompt: Option<String>,
 }
@@ -25,6 +27,10 @@ pub struct ProgressUpdate {
 
 pub fn default_language() -> String {
     "japanese".to_string()
+}
+
+pub fn default_temperature() -> f64 {
+    0.0
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +50,14 @@ pub struct PromptPresets {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GeminiRequest {
     pub contents: Vec<GeminiContent>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generation_config: Option<GeminiGenerationConfig>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GeminiGenerationConfig {
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f64>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

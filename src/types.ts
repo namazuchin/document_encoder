@@ -7,6 +7,7 @@ export interface VideoFile {
 export interface AppSettings {
   gemini_api_key: string;
   language: string;
+  temperature: number;
   custom_prompt?: string;
 }
 

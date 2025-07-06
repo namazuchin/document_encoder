@@ -24,6 +24,23 @@ export default function ApiSettings({ settings, onUpdateSettings, onClose, onSav
           />
         </div>
         
+        <div className="form-group">
+          <label htmlFor="temperature">Temperature (0.0 - 1.0):</label>
+          <input
+            type="number"
+            id="temperature"
+            min="0"
+            max="1"
+            step="0.1"
+            value={settings.temperature}
+            onChange={(e) => onUpdateSettings({ ...settings, temperature: parseFloat(e.target.value) || 0 })}
+            placeholder="0.0"
+          />
+          <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+            創造性の制御: 0=確定的、1=創造的
+          </small>
+        </div>
+        
         <div className="button-group">
           <button onClick={onSave}>保存</button>
           <button onClick={onClose}>キャンセル</button>

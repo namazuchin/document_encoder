@@ -14,7 +14,8 @@ function App() {
   const [selectedFiles, setSelectedFiles] = useState<VideoFile[]>([]);
   const [settings, setSettings] = useState<AppSettings>({
     gemini_api_key: "",
-    language: "japanese"
+    language: "japanese",
+    temperature: 0
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [generatedDocument, setGeneratedDocument] = useState("");
@@ -362,8 +363,10 @@ function App() {
 
   const handleExportXML = async () => {
     try {
-      await invoke("export_prompt_presets_to_file", { presets: promptPresets });
-      addLog(`✅ ${promptPresets.length}個のプリセットをXMLファイルに出力しました`);
+      // デフォルトプリセットを除外してエクスポート
+      const userPresets = promptPresets.filter(preset => !preset.is_default);
+      await invoke("export_prompt_presets_to_file", { presets: userPresets });
+      addLog(`✅ ${userPresets.length}個のユーザープリセットをXMLファイルに出力しました`);
     } catch (error) {
       addLog(`❌ XMLファイル出力エラー: ${error}`);
       console.error("Error exporting XML:", error);

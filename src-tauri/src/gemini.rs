@@ -7,7 +7,7 @@ use tokio::time::{sleep, Duration};
 
 use crate::types::{
     GeminiRequest, GeminiContent, GeminiPart, GeminiFileData, GeminiResponse,
-    GeminiUploadResponse, ProgressUpdate
+    GeminiUploadResponse, GeminiGenerationConfig, ProgressUpdate
 };
 
 // Internal GeminiFileInfo for status polling (with optional fields)
@@ -288,6 +288,7 @@ pub async fn generate_with_gemini_with_progress(
     file_uris: &[String],
     language: &str,
     api_key: &str,
+    temperature: f64,
     custom_prompt: Option<&str>,
     app: &tauri::AppHandle,
     base_step: usize,
@@ -304,13 +305,14 @@ pub async fn generate_with_gemini_with_progress(
         }
     };
 
-    generate_with_gemini_internal(file_uris, language, api_key, custom_prompt, emit_progress).await
+    generate_with_gemini_internal(file_uris, language, api_key, temperature, custom_prompt, emit_progress).await
 }
 
 pub async fn generate_with_gemini_internal<F>(
     file_uris: &[String],
     language: &str,
     api_key: &str,
+    temperature: f64,
     custom_prompt: Option<&str>,
     emit_progress: F,
 ) -> Result<String>
@@ -360,6 +362,13 @@ where
 
     let request = GeminiRequest {
         contents: vec![GeminiContent { parts }],
+        generation_config: if temperature > 0.0 {
+            Some(GeminiGenerationConfig {
+                temperature: Some(temperature),
+            })
+        } else {
+            None
+        },
     };
 
     println!("🌐 [GENERATE] Sending request to Gemini API...");
@@ -401,6 +410,7 @@ pub async fn integrate_documents(
     documents: &[String],
     language: &str,
     api_key: &str,
+    temperature: f64,
     custom_prompt: Option<&str>,
 ) -> Result<String> {
     let client = reqwest::Client::new();
@@ -438,6 +448,13 @@ pub async fn integrate_documents(
                 text: integration_prompt,
             }],
         }],
+        generation_config: if temperature > 0.0 {
+            Some(GeminiGenerationConfig {
+                temperature: Some(temperature),
+            })
+        } else {
+            None
+        },
     };
 
     let response = client

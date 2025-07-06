@@ -190,6 +190,7 @@ async fn generate_document(
             &[file_uri.clone()],
             &settings.language,
             &settings.gemini_api_key,
+            settings.temperature,
             settings.custom_prompt.as_deref(),
             &app,
             current_step,
@@ -234,6 +235,7 @@ async fn generate_document(
             &documents,
             &settings.language,
             &settings.gemini_api_key,
+            settings.temperature,
             settings.custom_prompt.as_deref(),
         )
         .await
@@ -291,6 +293,7 @@ async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(
     let safe_settings = AppSettings {
         gemini_api_key: encrypt_api_key(&settings.gemini_api_key),
         language: settings.language,
+        temperature: settings.temperature,
         custom_prompt: settings.custom_prompt,
     };
 
