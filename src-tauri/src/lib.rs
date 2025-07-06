@@ -176,10 +176,9 @@ async fn save_document_to_file(
     use std::path::Path;
 
     let full_path = Path::new(&save_path).join(&filename);
-    
-    fs::write(&full_path, content)
-        .map_err(|e| format!("Failed to save document: {}", e))?;
-    
+
+    fs::write(&full_path, content).map_err(|e| format!("Failed to save document: {}", e))?;
+
     Ok(full_path.to_string_lossy().to_string())
 }
 
@@ -431,7 +430,7 @@ async fn upload_to_gemini_with_progress(
     base_step: usize,
     total_steps: usize,
 ) -> Result<String> {
-    let emit_progress = |message: String| {
+    let _emit_progress = |message: String| {
         let progress = ProgressUpdate {
             message: message.clone(),
             step: base_step,
@@ -693,15 +692,6 @@ async fn generate_with_gemini_with_progress(
     };
 
     generate_with_gemini_internal(file_uris, mode, language, api_key, emit_progress).await
-}
-
-async fn generate_with_gemini(
-    file_uris: &[String],
-    mode: &str,
-    language: &str,
-    api_key: &str,
-) -> Result<String> {
-    generate_with_gemini_internal(file_uris, mode, language, api_key, |_| {}).await
 }
 
 async fn generate_with_gemini_internal<F>(
