@@ -53,7 +53,7 @@
     ],
     "macOS": {
       "hardenedRuntime": true,
-      "entitlements": null,
+      "entitlements": "./entitlements.plist",
       "exceptionDomain": null,
       "signingIdentity": null,
       "providerShortName": null
