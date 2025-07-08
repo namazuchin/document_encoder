@@ -32,6 +32,7 @@ use crate::video::{
 async fn generate_document(
     files: Vec<VideoFile>,
     settings: AppSettings,
+    save_directory: String,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     println!(
@@ -276,17 +277,8 @@ async fn generate_document(
             .map(|p| p.to_string_lossy().to_string())
             .collect();
         
-        // For image processing, we need the output directory
-        // Use the parent directory of the first video file as output directory
-        let output_dir = if let Some(first_file) = files.first() {
-            Path::new(&first_file.path)
-                .parent()
-                .unwrap_or(Path::new("."))
-                .to_string_lossy()
-                .to_string()
-        } else {
-            ".".to_string()
-        };
+        // For image processing, use the user-specified save directory
+        let output_dir = save_directory.clone();
         
         match process_document_with_images(&final_document, &video_paths, &output_dir).await {
             Ok(processed_doc) => {
