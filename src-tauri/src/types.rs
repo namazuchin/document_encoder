@@ -18,6 +18,8 @@ pub struct AppSettings {
     pub custom_prompt: Option<String>,
     #[serde(default = "default_gemini_model")]
     pub gemini_model: String,
+    #[serde(default)]
+    pub embed_images: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

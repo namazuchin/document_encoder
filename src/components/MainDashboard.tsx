@@ -71,6 +71,11 @@ export default function MainDashboard({
     onUpdateSettings(newSettings);
   };
 
+  const handleEmbedImagesChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newSettings = { ...settings, embed_images: e.target.checked };
+    onUpdateSettings(newSettings);
+  };
+
   return (
     <main className="container">
       <header className="header">
@@ -114,6 +119,17 @@ export default function MainDashboard({
                     <option value="japanese">日本語</option>
                     <option value="english">English</option>
                   </select>
+                </div>
+                <div className="setting-group">
+                  <label htmlFor="embedImages">
+                    <input
+                      type="checkbox"
+                      id="embedImages"
+                      checked={settings.embed_images || false}
+                      onChange={handleEmbedImagesChange}
+                    />
+                    ドキュメントに画像を埋め込む
+                  </label>
                 </div>
               </div>
               <div className="prompt-editor">
