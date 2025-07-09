@@ -546,11 +546,39 @@ pub async fn process_document_with_images(
         })
         .collect();
 
+    // Get video durations to help determine which video contains the timestamp
+    let mut video_durations = Vec::new();
+    for video_path in video_files {
+        match crate::video::get_video_duration(video_path).await {
+            Ok(duration) => video_durations.push(duration),
+            Err(e) => {
+                println!("⚠️ Failed to get duration for {}: {}", video_path, e);
+                video_durations.push(f64::INFINITY); // Assume infinite duration if we can't get it
+            }
+        }
+    }
+
     for (placeholder, timestamp) in matches {
-        // For simplicity, use the first video file
-        // In a more sophisticated implementation, you might want to determine which video contains the timestamp
-        if let Some(video_path) = video_files.first() {
-            let image_filename = format!("image-{:02}.png", image_counter);
+        let mut frame_extracted = false;
+        
+        // First, try to find the most appropriate video based on timestamp and duration
+        let mut video_candidates: Vec<(usize, &String)> = video_files
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| timestamp <= video_durations[*i])
+            .collect();
+        
+        // If no video can contain this timestamp, try all videos as fallback
+        if video_candidates.is_empty() {
+            video_candidates = video_files.iter().enumerate().collect();
+        }
+        
+        // Try to extract frame from candidate videos
+        for (video_index, video_path) in video_candidates {
+            let video_no = video_index + 1; // 1-based indexing
+            // Replace decimal point with underscore for filename compatibility
+            let timestamp_str = timestamp.to_string().replace('.', "_");
+            let image_filename = format!("image-{}-{}s.png", video_no, timestamp_str);
             let image_path = images_dir.join(&image_filename);
             
             // Extract frame from video
@@ -564,13 +592,21 @@ pub async fn process_document_with_images(
                     let markdown_image = format!("![Screenshot {}]({})", image_counter, relative_image_path);
                     processed_document = processed_document.replace(&placeholder, &markdown_image);
                     image_counter += 1;
+                    frame_extracted = true;
+                    println!("✅ Successfully extracted frame from video {} at {}s", video_no, timestamp);
+                    break; // Stop trying other videos once successful
                 }
                 Err(e) => {
-                    println!("❌ Failed to extract frame at {}s: {}", timestamp, e);
-                    // Remove the placeholder if image extraction fails
-                    processed_document = processed_document.replace(&placeholder, "");
+                    println!("⚠️ Failed to extract frame from video {} at {}s: {}", video_no, timestamp, e);
+                    // Continue to try next video
                 }
             }
+        }
+        
+        // If no video could provide the frame, remove the placeholder
+        if !frame_extracted {
+            println!("❌ Failed to extract frame at {}s from any video", timestamp);
+            processed_document = processed_document.replace(&placeholder, "");
         }
     }
 
