@@ -42,40 +42,11 @@ try {
   }
   
   console.log('Service account credentials loaded successfully');
-  console.log('Client email:', credentials.client_email);
 } catch (error) {
   console.error('Failed to parse credentials:', error.message);
   console.error('Please check that GOOGLE_DRIVE_CREDENTIALS contains a valid base64-encoded JSON file');
   process.exit(1);
 }
-
-// Check if file exists
-console.log(`Checking file existence: ${filePath}`);
-console.log(`Current working directory: ${process.cwd()}`);
-
-// List files in current directory for debugging
-function listDirectoryRecursive(dir, depth = 0, maxDepth = 2) {
-  if (depth > maxDepth) return;
-  
-  try {
-    const files = fs.readdirSync(dir);
-    files.forEach(file => {
-      const filePath = path.join(dir, file);
-      const stats = fs.statSync(filePath);
-      const indent = '  '.repeat(depth);
-      console.log(`${indent}${file} (${stats.isDirectory() ? 'directory' : 'file'})`);
-      
-      if (stats.isDirectory()) {
-        listDirectoryRecursive(filePath, depth + 1, maxDepth);
-      }
-    });
-  } catch (error) {
-    console.log(`Could not list directory ${dir}:`, error.message);
-  }
-}
-
-console.log('Files in current directory (recursive):');
-listDirectoryRecursive('.');
 
 // Extract zip files if found
 function extractZipFiles() {
@@ -97,19 +68,16 @@ function extractZipFiles() {
         }
       }
     } catch (error) {
-      console.log(`Could not search directory ${dir}:`, error.message);
+      // Silently skip directories that can't be read
     }
   }
   
   findZips('.');
   
   for (const zipFile of zipFiles) {
-    console.log(`Found zip file: ${zipFile}`);
     try {
       const extractDir = path.dirname(zipFile);
-      console.log(`Extracting ${zipFile} to ${extractDir}`);
-      execSync(`unzip -o "${zipFile}" -d "${extractDir}"`, { stdio: 'inherit' });
-      console.log(`Successfully extracted ${zipFile}`);
+      execSync(`unzip -o "${zipFile}" -d "${extractDir}"`, { stdio: 'pipe' });
     } catch (error) {
       console.log(`Failed to extract ${zipFile}:`, error.message);
     }
@@ -129,12 +97,11 @@ function findBuildArtifact() {
           const fullPath = path.join(dir, file);
           const ext = path.extname(file).toLowerCase();
           if (extensions.includes(ext)) {
-            console.log(`Found potential artifact: ${fullPath}`);
             return fullPath;
           }
         }
       } catch (error) {
-        console.log(`Could not search directory ${dir}:`, error.message);
+        // Silently skip directories that can't be read
       }
     }
   }
@@ -154,7 +121,6 @@ function findBuildArtifact() {
         if (stats.isFile()) {
           const ext = path.extname(file).toLowerCase();
           if (extensions.includes(ext)) {
-            console.log(`Found artifact in recursive search: ${fullPath}`);
             return fullPath;
           }
         }
@@ -171,7 +137,7 @@ function findBuildArtifact() {
         }
       }
     } catch (error) {
-      console.log(`Could not recursively search directory ${dir}:`, error.message);
+      // Silently skip directories that can't be read
     }
     
     return null;
@@ -181,28 +147,20 @@ function findBuildArtifact() {
 }
 
 if (!fs.existsSync(filePath)) {
-  console.log('Original path not found, searching for build artifacts...');
+  console.log('File not found at expected path, searching for artifacts...');
   
-  // First, extract any zip files that might contain artifacts
-  console.log('Extracting zip files...');
+  // Extract any zip files that might contain artifacts
   extractZipFiles();
-  
-  // Refresh directory listing after extraction
-  console.log('Files after extraction:');
-  listDirectoryRecursive('.');
   
   const foundArtifact = findBuildArtifact();
   
   if (foundArtifact) {
-    console.log(`Using found artifact: ${foundArtifact}`);
+    console.log(`Using artifact: ${foundArtifact}`);
     args[2] = foundArtifact;
   } else {
-    console.error(`No build artifacts found. Expected file: ${filePath}`);
-    console.error('Searched for files with extensions: .dmg, .msi, .exe');
+    console.error(`No artifacts found. Expected: ${filePath}`);
     process.exit(1);
   }
-} else {
-  console.log(`File exists: ${filePath}`);
 }
 
 // Create JWT for service account
@@ -448,14 +406,8 @@ function verifyFolder(accessToken) {
         if (res.statusCode >= 200 && res.statusCode < 300) {
           try {
             const response = JSON.parse(data);
-            console.log('Folder verification successful:');
-            console.log(`  Name: ${response.name}`);
-            console.log(`  ID: ${response.id}`);
-            console.log(`  Drive ID: ${response.driveId || 'Personal Drive'}`);
-            console.log(`  Parents: ${response.parents ? response.parents.join(', ') : 'Root'}`);
-            
             if (response.driveId) {
-              console.log('✓ Using Shared Drive (recommended)');
+              console.log('✓ Using Shared Drive');
             } else {
               console.log('⚠ Warning: Using Personal Drive (may cause quota issues)');
             }
