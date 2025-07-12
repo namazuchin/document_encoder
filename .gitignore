@@ -47,12 +47,18 @@ pids
 # miscellaneous
 /.vs
 .DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.env
+.claude/.mcp.json
 .Thumbs.db
 *.sublime*
 .idea
 debug.log
 TODO.md
-.claude/.mcp.json
 .env.local
 
 /dist
