@@ -14,20 +14,92 @@ if (args.length < 4) {
 
 const [credentialsBase64, folderId, filePath, uploadName] = args;
 
+// Check folder ID
+if (!folderId || folderId.trim() === '') {
+  console.error('Error: GOOGLE_DRIVE_FOLDER_ID is empty or not set');
+  console.error('Please ensure the GOOGLE_DRIVE_FOLDER_ID secret is properly configured in GitHub repository settings');
+  process.exit(1);
+}
+
 // Decode and parse service account credentials
 let credentials;
 try {
+  if (!credentialsBase64 || credentialsBase64.trim() === '') {
+    console.error('Error: GOOGLE_DRIVE_CREDENTIALS is empty or not set');
+    console.error('Please ensure the GOOGLE_DRIVE_CREDENTIALS secret is properly configured in GitHub repository settings');
+    process.exit(1);
+  }
+  
   const credentialsJson = Buffer.from(credentialsBase64, 'base64').toString('utf8');
   credentials = JSON.parse(credentialsJson);
+  
+  // Validate required fields
+  if (!credentials.private_key || !credentials.client_email) {
+    console.error('Error: Invalid service account credentials - missing required fields');
+    console.error('Required fields: private_key, client_email');
+    process.exit(1);
+  }
+  
+  console.log('Service account credentials loaded successfully');
+  console.log('Client email:', credentials.client_email);
 } catch (error) {
   console.error('Failed to parse credentials:', error.message);
+  console.error('Please check that GOOGLE_DRIVE_CREDENTIALS contains a valid base64-encoded JSON file');
   process.exit(1);
 }
 
 // Check if file exists
+console.log(`Checking file existence: ${filePath}`);
+console.log(`Current working directory: ${process.cwd()}`);
+
+// List files in current directory for debugging
+try {
+  const files = fs.readdirSync('.');
+  console.log('Files in current directory:');
+  files.forEach(file => {
+    const stats = fs.statSync(file);
+    console.log(`  ${file} (${stats.isDirectory() ? 'directory' : 'file'})`);
+  });
+} catch (error) {
+  console.log('Could not list current directory:', error.message);
+}
+
 if (!fs.existsSync(filePath)) {
-  console.error(`File not found: ${filePath}`);
-  process.exit(1);
+  // Try different path variations
+  const fileName = path.basename(filePath);
+  const possiblePaths = [
+    filePath,
+    fileName,
+    `./${fileName}`,
+    path.resolve(filePath),
+    path.resolve(fileName)
+  ];
+  
+  let foundPath = null;
+  for (const testPath of possiblePaths) {
+    if (fs.existsSync(testPath)) {
+      foundPath = testPath;
+      console.log(`Found file at: ${foundPath}`);
+      break;
+    }
+  }
+  
+  if (!foundPath) {
+    console.error(`File not found: ${filePath}`);
+    console.error('Tried paths:');
+    possiblePaths.forEach(p => console.error(`  - ${p}`));
+    process.exit(1);
+  } else {
+    // Update filePath to the found path
+    console.log(`Using found path: ${foundPath}`);
+    const originalFilePath = filePath;
+    const actualFilePath = foundPath;
+    
+    // Update the arguments for the rest of the script
+    args[2] = actualFilePath;
+  }
+} else {
+  console.log(`File exists: ${filePath}`);
 }
 
 // Create JWT for service account
@@ -147,9 +219,11 @@ function findExistingFile(accessToken, fileName) {
 // Upload file to Google Drive
 function uploadFile(accessToken, existingFileId = null) {
   return new Promise((resolve, reject) => {
-    const fileStats = fs.statSync(filePath);
+    // Use the potentially updated filePath from args
+    const actualFilePath = args[2];
+    const fileStats = fs.statSync(actualFilePath);
     const fileName = uploadName;
-    const mimeType = getMimeType(path.extname(filePath));
+    const mimeType = getMimeType(path.extname(actualFilePath));
 
     console.log(`${existingFileId ? 'Updating' : 'Uploading'} file: ${fileName} (${fileStats.size} bytes)`);
 
@@ -221,7 +295,7 @@ function uploadFile(accessToken, existingFileId = null) {
     req.write(postDataStart);
     
     // Stream file data
-    const fileStream = fs.createReadStream(filePath);
+    const fileStream = fs.createReadStream(actualFilePath);
     fileStream.on('data', (chunk) => {
       req.write(chunk);
     });
