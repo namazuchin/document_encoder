@@ -144,11 +144,20 @@ jobs:
             upload-name: "DocumentEncoder-Windows"
 
     steps:
+      - name: Checkout repository for upload script
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js for upload
+        uses: actions/setup-node@v4
+        with:
+          node-version: "18"
+
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
           pattern: ${{ matrix.settings.artifact-name }}-*
           merge-multiple: true
+          path: artifacts/
 
       - name: Download metadata
         uses: actions/download-artifact@v4
@@ -163,24 +172,21 @@ jobs:
         run: |
           FILENAME=$(cat metadata/filename.txt)
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
-
+          
+          echo "Contents of artifacts directory:"
+          find artifacts/ -type f 2>/dev/null || echo "artifacts directory not found"
+          
           # Find the downloaded artifact
-          ARTIFACT=$(find . -name "*.dmg" -o -name "*.msi" | head -1)
+          ARTIFACT=$(find artifacts/ -name "*.dmg" -o -name "*.msi" 2>/dev/null | head -1)
           if [[ -z "$ARTIFACT" ]]; then
-            echo "Error: No artifact file found"
+            echo "Error: No artifact file found in artifacts/ directory"
+            echo "Listing all files in artifacts/:"
+            ls -la artifacts/ 2>/dev/null || echo "Cannot list artifacts directory"
             exit 1
           fi
           echo "artifact-path=$ARTIFACT" >> $GITHUB_OUTPUT
           echo "Found artifact: $ARTIFACT"
           echo "Will upload as: $FILENAME"
-
-      - name: Checkout repository for upload script
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js for upload
-        uses: actions/setup-node@v4
-        with:
-          node-version: "18"
 
       - name: Upload to Google Drive
         shell: bash

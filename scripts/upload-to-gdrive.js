@@ -4,6 +4,7 @@ import crypto from 'crypto';
 import https from 'https';
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
 
 // Command line arguments
 const args = process.argv.slice(2);
@@ -76,10 +77,49 @@ function listDirectoryRecursive(dir, depth = 0, maxDepth = 2) {
 console.log('Files in current directory (recursive):');
 listDirectoryRecursive('.');
 
+// Extract zip files if found
+function extractZipFiles() {
+  const zipFiles = [];
+  
+  function findZips(dir, depth = 0, maxDepth = 2) {
+    if (depth > maxDepth) return;
+    
+    try {
+      const files = fs.readdirSync(dir);
+      for (const file of files) {
+        const fullPath = path.join(dir, file);
+        const stats = fs.statSync(fullPath);
+        
+        if (stats.isFile() && path.extname(file).toLowerCase() === '.zip') {
+          zipFiles.push(fullPath);
+        } else if (stats.isDirectory()) {
+          findZips(fullPath, depth + 1, maxDepth);
+        }
+      }
+    } catch (error) {
+      console.log(`Could not search directory ${dir}:`, error.message);
+    }
+  }
+  
+  findZips('.');
+  
+  for (const zipFile of zipFiles) {
+    console.log(`Found zip file: ${zipFile}`);
+    try {
+      const extractDir = path.dirname(zipFile);
+      console.log(`Extracting ${zipFile} to ${extractDir}`);
+      execSync(`unzip -o "${zipFile}" -d "${extractDir}"`, { stdio: 'inherit' });
+      console.log(`Successfully extracted ${zipFile}`);
+    } catch (error) {
+      console.log(`Failed to extract ${zipFile}:`, error.message);
+    }
+  }
+}
+
 // Search for files matching the expected extensions
 function findBuildArtifact() {
-  const extensions = ['.dmg', '.msi', '.exe', '.zip'];
-  const searchDirs = ['.', './build', './dist', './target'];
+  const extensions = ['.dmg', '.msi', '.exe'];
+  const searchDirs = ['.', './artifacts', './build', './dist', './target'];
   
   for (const dir of searchDirs) {
     if (fs.existsSync(dir)) {
@@ -143,6 +183,14 @@ function findBuildArtifact() {
 if (!fs.existsSync(filePath)) {
   console.log('Original path not found, searching for build artifacts...');
   
+  // First, extract any zip files that might contain artifacts
+  console.log('Extracting zip files...');
+  extractZipFiles();
+  
+  // Refresh directory listing after extraction
+  console.log('Files after extraction:');
+  listDirectoryRecursive('.');
+  
   const foundArtifact = findBuildArtifact();
   
   if (foundArtifact) {
@@ -150,7 +198,7 @@ if (!fs.existsSync(filePath)) {
     args[2] = foundArtifact;
   } else {
     console.error(`No build artifacts found. Expected file: ${filePath}`);
-    console.error('Searched for files with extensions: .dmg, .msi, .exe, .zip');
+    console.error('Searched for files with extensions: .dmg, .msi, .exe');
     process.exit(1);
   }
 } else {
