@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 
-const crypto = require('crypto');
-const https = require('https');
-const fs = require('fs');
-const path = require('path');
+import crypto from 'crypto';
+import https from 'https';
+import fs from 'fs';
+import path from 'path';
 
 // Command line arguments
 const args = process.argv.slice(2);
@@ -63,10 +63,7 @@ function getAccessToken() {
   return new Promise((resolve, reject) => {
     const jwt = createJWT();
     
-    const postData = new URLSearchParams({
-      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
-      assertion: jwt
-    }).toString();
+    const postData = 'grant_type=urn%3Aietf%3Aparams%3Aoauth%3Agrant-type%3Ajwt-bearer&assertion=' + encodeURIComponent(jwt);
 
     const options = {
       hostname: 'oauth2.googleapis.com',
