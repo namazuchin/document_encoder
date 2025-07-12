@@ -288,7 +288,7 @@ function findExistingFile(accessToken, fileName) {
     const options = {
       hostname: 'www.googleapis.com',
       port: 443,
-      path: `/drive/v3/files?q=${encodedQuery}&fields=files(id,name)`,
+      path: `/drive/v3/files?q=${encodedQuery}&fields=files(id,name)&supportsAllDrives=true&includeItemsFromAllDrives=true`,
       method: 'GET',
       headers: {
         'Authorization': `Bearer ${accessToken}`
@@ -354,8 +354,8 @@ function uploadFile(accessToken, existingFileId = null) {
 
     const method = existingFileId ? 'PATCH' : 'POST';
     const url = existingFileId ? 
-      `/upload/drive/v3/files/${existingFileId}?uploadType=multipart` :
-      '/upload/drive/v3/files?uploadType=multipart';
+      `/upload/drive/v3/files/${existingFileId}?uploadType=multipart&supportsAllDrives=true` :
+      '/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true';
 
     const options = {
       hostname: 'www.googleapis.com',
@@ -426,12 +426,67 @@ function getMimeType(extension) {
   return mimeTypes[extension.toLowerCase()] || 'application/octet-stream';
 }
 
+// Verify folder exists and is accessible
+function verifyFolder(accessToken) {
+  return new Promise((resolve, reject) => {
+    const options = {
+      hostname: 'www.googleapis.com',
+      port: 443,
+      path: `/drive/v3/files/${folderId}?fields=id,name,parents,driveId&supportsAllDrives=true`,
+      method: 'GET',
+      headers: {
+        'Authorization': `Bearer ${accessToken}`
+      }
+    };
+
+    const req = https.request(options, (res) => {
+      let data = '';
+      res.on('data', (chunk) => {
+        data += chunk;
+      });
+      res.on('end', () => {
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          try {
+            const response = JSON.parse(data);
+            console.log('Folder verification successful:');
+            console.log(`  Name: ${response.name}`);
+            console.log(`  ID: ${response.id}`);
+            console.log(`  Drive ID: ${response.driveId || 'Personal Drive'}`);
+            console.log(`  Parents: ${response.parents ? response.parents.join(', ') : 'Root'}`);
+            
+            if (response.driveId) {
+              console.log('✓ Using Shared Drive (recommended)');
+            } else {
+              console.log('⚠ Warning: Using Personal Drive (may cause quota issues)');
+            }
+            
+            resolve(response);
+          } catch (error) {
+            reject(new Error(`Failed to parse folder info: ${error.message}`));
+          }
+        } else {
+          reject(new Error(`Folder verification failed with status ${res.statusCode}: ${data}`));
+        }
+      });
+    });
+
+    req.on('error', (error) => {
+      reject(new Error(`Folder verification request failed: ${error.message}`));
+    });
+
+    req.end();
+  });
+}
+
 // Main execution
 async function main() {
   try {
     console.log('Getting access token...');
     const accessToken = await getAccessToken();
     console.log('Access token obtained successfully');
+
+    console.log('Verifying folder access...');
+    await verifyFolder(accessToken);
 
     console.log('Checking for existing files...');
     const existingFile = await findExistingFile(accessToken, uploadName);
@@ -447,6 +502,21 @@ async function main() {
     console.log('Upload completed successfully!');
   } catch (error) {
     console.error('Upload failed:', error.message);
+    
+    // Provide helpful suggestions based on error type
+    if (error.message.includes('404') || error.message.includes('notFound')) {
+      console.error('\n📋 Troubleshooting suggestions:');
+      console.error('1. Check that GOOGLE_DRIVE_FOLDER_ID is correct');
+      console.error('2. Ensure the folder is in a Shared Drive (not personal Drive)');
+      console.error('3. Verify the Service Account has been added to the Shared Drive with Editor permissions');
+      console.error('4. Make sure the folder ID is from the correct Google account');
+    } else if (error.message.includes('403')) {
+      console.error('\n📋 Troubleshooting suggestions:');
+      console.error('1. Use a Shared Drive instead of personal Drive');
+      console.error('2. Add the Service Account as a member with Editor permissions');
+      console.error('3. Ensure Google Drive API is enabled in your Google Cloud project');
+    }
+    
     process.exit(1);
   }
 }
