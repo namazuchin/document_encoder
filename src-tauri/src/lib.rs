@@ -12,6 +12,7 @@ use crate::gemini::{
     upload_to_gemini_with_progress,
     generate_with_gemini_with_progress,
     integrate_documents,
+    process_document_with_images,
 };
 use crate::types::{
     VideoFile, AppSettings, ProgressUpdate, PromptPreset,
@@ -31,6 +32,7 @@ use crate::video::{
 async fn generate_document(
     files: Vec<VideoFile>,
     settings: AppSettings,
+    save_directory: String,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     println!(
@@ -193,6 +195,7 @@ async fn generate_document(
             settings.temperature,
             settings.custom_prompt.as_deref(),
             &settings.gemini_model,
+            settings.embed_images,
             &app,
             current_step,
             total_steps,
@@ -259,6 +262,38 @@ async fn generate_document(
         documents.into_iter().next().unwrap_or_default()
     };
 
+    // Process images if embed_images is enabled
+    let final_processed_document = if settings.embed_images && !processed_files.is_empty() {
+        emit_progress(
+            &app,
+            total_steps,
+            total_steps,
+            "画像を処理中...".to_string(),
+        );
+        
+        // Convert processed files to strings for image processing
+        let video_paths: Vec<String> = processed_files
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+        
+        // For image processing, use the user-specified save directory
+        let output_dir = save_directory.clone();
+        
+        match process_document_with_images(&final_document, &video_paths, &output_dir).await {
+            Ok(processed_doc) => {
+                println!("✅ [BACKEND] Successfully processed document with images");
+                processed_doc
+            }
+            Err(e) => {
+                println!("⚠️ [BACKEND] Failed to process images, using original document: {}", e);
+                final_document
+            }
+        }
+    } else {
+        final_document
+    };
+
     emit_progress(
         &app,
         total_steps,
@@ -267,9 +302,9 @@ async fn generate_document(
     );
     println!(
         "🎉 [BACKEND] Document generation completed successfully (final length: {})",
-        final_document.len()
+        final_processed_document.len()
     );
-    Ok(final_document)
+    Ok(final_processed_document)
 }
 
 
@@ -298,6 +333,7 @@ async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(
         temperature: settings.temperature,
         custom_prompt: settings.custom_prompt,
         gemini_model: settings.gemini_model,
+        embed_images: settings.embed_images,
     };
 
     let config_json = serde_json::to_string_pretty(&safe_settings)

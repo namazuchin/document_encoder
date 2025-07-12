@@ -1,4 +1,5 @@
 use anyhow::Result;
+use regex::Regex;
 use serde::{Deserialize, Serialize};
 use std::fs;
 use std::path::Path;
@@ -291,6 +292,7 @@ pub async fn generate_with_gemini_with_progress(
     temperature: f64,
     custom_prompt: Option<&str>,
     model: &str,
+    embed_images: bool,
     app: &tauri::AppHandle,
     base_step: usize,
     total_steps: usize,
@@ -306,7 +308,7 @@ pub async fn generate_with_gemini_with_progress(
         }
     };
 
-    generate_with_gemini_internal(file_uris, language, api_key, temperature, custom_prompt, model, emit_progress).await
+    generate_with_gemini_internal(file_uris, language, api_key, temperature, custom_prompt, model, embed_images, emit_progress).await
 }
 
 pub async fn generate_with_gemini_internal<F>(
@@ -316,6 +318,7 @@ pub async fn generate_with_gemini_internal<F>(
     temperature: f64,
     custom_prompt: Option<&str>,
     model: &str,
+    embed_images: bool,
     emit_progress: F,
 ) -> Result<String>
 where
@@ -331,14 +334,18 @@ where
     let client = reqwest::Client::new();
 
     let prompt = if let Some(custom) = custom_prompt {
-        custom.to_string()
+        let mut final_prompt = custom.to_string();
+        if embed_images {
+            final_prompt.push_str("\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX.XXs] where XX.XXs is the timestamp in seconds (e.g., [Screenshot: 123.45s]). Use these references to mark key moments that would benefit from visual representation.");
+        }
+        final_prompt
     } else {
         let language_instruction = match language {
             "english" => "Please write the document in English",
             "japanese" | _ => "Please write the document in Japanese",
         };
 
-        format!("Please analyze the uploaded video(s) and create a comprehensive document based on the content. The document should include:
+        let mut base_prompt = format!("Please analyze the uploaded video(s) and create a comprehensive document based on the content. The document should include:
         
         1. Overview of the content
         2. Key points and important information
@@ -346,7 +353,13 @@ where
         4. Technical details and specifications
         5. Any relevant notes or recommendations
         
-        {} and format it in a clear, professional manner.", language_instruction)
+        {} and format it in a clear, professional manner.", language_instruction);
+        
+        if embed_images {
+            base_prompt.push_str("\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX.XXs] where XX.XXs is the timestamp in seconds (e.g., [Screenshot: 123.45s]). Use these references to mark key moments that would benefit from visual representation.");
+        }
+        
+        base_prompt
     };
 
     let mut parts = vec![GeminiPart::Text {
@@ -504,4 +517,98 @@ pub fn get_mime_type(file_path: &str) -> String {
         _ => "video/mp4", // Default
     }
     .to_string()
+}
+
+/// Processes the generated document to extract screenshot placeholders and replace them with images
+pub async fn process_document_with_images(
+    document: &str,
+    video_files: &[String],
+    output_directory: &str,
+) -> Result<String> {
+    // Create images directory
+    let images_dir = Path::new(output_directory).join("images");
+    if !images_dir.exists() {
+        fs::create_dir_all(&images_dir)?;
+    }
+
+    // Extract screenshot placeholders using regex
+    let re = Regex::new(r"\[Screenshot:\s*(\d+(?:\.\d+)?)\s*s\]").unwrap();
+    let mut processed_document = document.to_string();
+    let mut image_counter = 1;
+
+    // Collect all matches first to avoid borrowing issues
+    let matches: Vec<(String, f64)> = re
+        .captures_iter(document)
+        .map(|caps| {
+            let full_match = caps[0].to_string();
+            let timestamp = caps[1].parse::<f64>().unwrap_or(0.0);
+            (full_match, timestamp)
+        })
+        .collect();
+
+    // Get video durations to help determine which video contains the timestamp
+    let mut video_durations = Vec::new();
+    for video_path in video_files {
+        match crate::video::get_video_duration(video_path).await {
+            Ok(duration) => video_durations.push(duration),
+            Err(e) => {
+                println!("⚠️ Failed to get duration for {}: {}", video_path, e);
+                video_durations.push(f64::INFINITY); // Assume infinite duration if we can't get it
+            }
+        }
+    }
+
+    for (placeholder, timestamp) in matches {
+        let mut frame_extracted = false;
+        
+        // First, try to find the most appropriate video based on timestamp and duration
+        let mut video_candidates: Vec<(usize, &String)> = video_files
+            .iter()
+            .enumerate()
+            .filter(|(i, _)| timestamp <= video_durations[*i])
+            .collect();
+        
+        // If no video can contain this timestamp, try all videos as fallback
+        if video_candidates.is_empty() {
+            video_candidates = video_files.iter().enumerate().collect();
+        }
+        
+        // Try to extract frame from candidate videos
+        for (video_index, video_path) in video_candidates {
+            let video_no = video_index + 1; // 1-based indexing
+            // Replace decimal point with underscore for filename compatibility
+            let timestamp_str = timestamp.to_string().replace('.', "_");
+            let image_filename = format!("image-{}-{}s.png", video_no, timestamp_str);
+            let image_path = images_dir.join(&image_filename);
+            
+            // Extract frame from video
+            match crate::video::extract_frame_from_video(
+                video_path,
+                timestamp,
+                image_path.to_str().unwrap(),
+            ).await {
+                Ok(_) => {
+                    let relative_image_path = format!("./images/{}", image_filename);
+                    let markdown_image = format!("![Screenshot {}]({})", image_counter, relative_image_path);
+                    processed_document = processed_document.replace(&placeholder, &markdown_image);
+                    image_counter += 1;
+                    frame_extracted = true;
+                    println!("✅ Successfully extracted frame from video {} at {}s", video_no, timestamp);
+                    break; // Stop trying other videos once successful
+                }
+                Err(e) => {
+                    println!("⚠️ Failed to extract frame from video {} at {}s: {}", video_no, timestamp, e);
+                    // Continue to try next video
+                }
+            }
+        }
+        
+        // If no video could provide the frame, remove the placeholder
+        if !frame_extracted {
+            println!("❌ Failed to extract frame at {}s from any video", timestamp);
+            processed_document = processed_document.replace(&placeholder, "");
+        }
+    }
+
+    Ok(processed_document)
 }

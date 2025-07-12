@@ -128,3 +128,38 @@ pub async fn split_video_if_needed(video_path: &Path) -> Result<Vec<PathBuf>> {
 
     Ok(segment_paths)
 }
+
+/// Extracts a frame from a video at the specified timestamp and saves it as an image
+pub async fn extract_frame_from_video(
+    video_path: &str,
+    timestamp: f64,
+    output_path: &str,
+) -> Result<()> {
+    debug!("Extracting frame from video: {} at timestamp: {}s", video_path, timestamp);
+    
+    let ffmpeg_path = find_executable("ffmpeg")?;
+    
+    let status = Command::new(&ffmpeg_path)
+        .args([
+            "-i",
+            video_path,
+            "-ss",
+            &timestamp.to_string(),
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
+            "-y",
+            output_path,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .status()?;
+    
+    if !status.success() {
+        return Err(anyhow!("Failed to extract frame from video at timestamp {}s", timestamp));
+    }
+    
+    debug!("Successfully extracted frame to: {}", output_path);
+    Ok(())
+}
