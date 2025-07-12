@@ -19,11 +19,11 @@ jobs:
           - os: macos-latest
             artifact-name: document-encoder-macos
             build-path: src-tauri/target/release/bundle/dmg/*.dmg
-            upload-name: DocumentEncoder-macOS-v${{ github.run_number }}.dmg
+            upload-name: DocumentEncoder-macOS-${{ github.event.head_commit.timestamp }}.dmg
           - os: windows-latest
             artifact-name: document-encoder-windows
             build-path: src-tauri/target/release/bundle/msi/*.msi
-            upload-name: DocumentEncoder-Windows-v${{ github.run_number }}.msi
+            upload-name: DocumentEncoder-Windows-${{ github.event.head_commit.timestamp }}.msi
 
     steps:
     - name: Checkout repository
