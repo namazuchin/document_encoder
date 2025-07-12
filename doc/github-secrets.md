@@ -82,6 +82,26 @@ macOSビルドと署名のためにGitHubリポジトリで設定する必要が
 9. [Google Drive API](https://console.developers.google.com/apis/api/drive.googleapis.com)を有効化
 10. Google Driveでアップロード先フォルダをサービスアカウントのメールアドレスと共有
 
+## Google Drive アップロード機能について
+
+このプロジェクトでは、外部依存を避けるため独自のアップロードスクリプト（`scripts/upload-to-gdrive.js`）を使用しています。このスクリプトは：
+
+- **外部ライブラリ不要**: Node.js標準ライブラリのみを使用
+- **Service Account認証**: JWT生成からアクセストークン取得まで自前実装
+- **ファイル置換対応**: 同名ファイルが存在する場合は自動で更新
+- **エラーハンドリング**: 詳細なログ出力と適切なエラー処理
+
+### スクリプト使用方法
+
+```bash
+node scripts/upload-to-gdrive.js <credentials_base64> <folder_id> <file_path> <upload_name>
+```
+
+- `credentials_base64`: Service AccountのJSONファイルをbase64エンコードしたもの
+- `folder_id`: アップロード先のGoogle DriveフォルダID
+- `file_path`: アップロードするファイルのパス
+- `upload_name`: Google Drive上での表示名
+
 ## トラブルシューティング
 
 ### Apple署名関連
@@ -93,3 +113,5 @@ macOSビルドと署名のためにGitHubリポジトリで設定する必要が
 - アップロードエラーが発生する場合は、フォルダの共有設定を確認
 - 認証エラーの場合は、Service Account JSONファイルのbase64エンコードを確認
 - API制限エラーの場合は、Google Drive APIが有効化されているか確認
+- JWT署名エラーの場合は、Service AccountのPrivate Keyが正しく設定されているか確認
+- ファイルが見つからない場合は、ビルド成果物のパスが正しいか確認
