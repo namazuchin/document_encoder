@@ -53,50 +53,105 @@ console.log(`Checking file existence: ${filePath}`);
 console.log(`Current working directory: ${process.cwd()}`);
 
 // List files in current directory for debugging
-try {
-  const files = fs.readdirSync('.');
-  console.log('Files in current directory:');
-  files.forEach(file => {
-    const stats = fs.statSync(file);
-    console.log(`  ${file} (${stats.isDirectory() ? 'directory' : 'file'})`);
-  });
-} catch (error) {
-  console.log('Could not list current directory:', error.message);
+function listDirectoryRecursive(dir, depth = 0, maxDepth = 2) {
+  if (depth > maxDepth) return;
+  
+  try {
+    const files = fs.readdirSync(dir);
+    files.forEach(file => {
+      const filePath = path.join(dir, file);
+      const stats = fs.statSync(filePath);
+      const indent = '  '.repeat(depth);
+      console.log(`${indent}${file} (${stats.isDirectory() ? 'directory' : 'file'})`);
+      
+      if (stats.isDirectory()) {
+        listDirectoryRecursive(filePath, depth + 1, maxDepth);
+      }
+    });
+  } catch (error) {
+    console.log(`Could not list directory ${dir}:`, error.message);
+  }
 }
 
-if (!fs.existsSync(filePath)) {
-  // Try different path variations
-  const fileName = path.basename(filePath);
-  const possiblePaths = [
-    filePath,
-    fileName,
-    `./${fileName}`,
-    path.resolve(filePath),
-    path.resolve(fileName)
-  ];
+console.log('Files in current directory (recursive):');
+listDirectoryRecursive('.');
+
+// Search for files matching the expected extensions
+function findBuildArtifact() {
+  const extensions = ['.dmg', '.msi', '.exe', '.zip'];
+  const searchDirs = ['.', './build', './dist', './target'];
   
-  let foundPath = null;
-  for (const testPath of possiblePaths) {
-    if (fs.existsSync(testPath)) {
-      foundPath = testPath;
-      console.log(`Found file at: ${foundPath}`);
-      break;
+  for (const dir of searchDirs) {
+    if (fs.existsSync(dir)) {
+      try {
+        const files = fs.readdirSync(dir);
+        for (const file of files) {
+          const fullPath = path.join(dir, file);
+          const ext = path.extname(file).toLowerCase();
+          if (extensions.includes(ext)) {
+            console.log(`Found potential artifact: ${fullPath}`);
+            return fullPath;
+          }
+        }
+      } catch (error) {
+        console.log(`Could not search directory ${dir}:`, error.message);
+      }
     }
   }
   
-  if (!foundPath) {
-    console.error(`File not found: ${filePath}`);
-    console.error('Tried paths:');
-    possiblePaths.forEach(p => console.error(`  - ${p}`));
-    process.exit(1);
-  } else {
-    // Update filePath to the found path
-    console.log(`Using found path: ${foundPath}`);
-    const originalFilePath = filePath;
-    const actualFilePath = foundPath;
+  // Recursive search for artifact files
+  function searchRecursive(dir, depth = 0, maxDepth = 3) {
+    if (depth > maxDepth) return null;
     
-    // Update the arguments for the rest of the script
-    args[2] = actualFilePath;
+    try {
+      const files = fs.readdirSync(dir);
+      
+      // First pass: look for files
+      for (const file of files) {
+        const fullPath = path.join(dir, file);
+        const stats = fs.statSync(fullPath);
+        
+        if (stats.isFile()) {
+          const ext = path.extname(file).toLowerCase();
+          if (extensions.includes(ext)) {
+            console.log(`Found artifact in recursive search: ${fullPath}`);
+            return fullPath;
+          }
+        }
+      }
+      
+      // Second pass: search subdirectories
+      for (const file of files) {
+        const fullPath = path.join(dir, file);
+        const stats = fs.statSync(fullPath);
+        
+        if (stats.isDirectory()) {
+          const found = searchRecursive(fullPath, depth + 1, maxDepth);
+          if (found) return found;
+        }
+      }
+    } catch (error) {
+      console.log(`Could not recursively search directory ${dir}:`, error.message);
+    }
+    
+    return null;
+  }
+  
+  return searchRecursive('.');
+}
+
+if (!fs.existsSync(filePath)) {
+  console.log('Original path not found, searching for build artifacts...');
+  
+  const foundArtifact = findBuildArtifact();
+  
+  if (foundArtifact) {
+    console.log(`Using found artifact: ${foundArtifact}`);
+    args[2] = foundArtifact;
+  } else {
+    console.error(`No build artifacts found. Expected file: ${filePath}`);
+    console.error('Searched for files with extensions: .dmg, .msi, .exe, .zip');
+    process.exit(1);
   }
 } else {
   console.log(`File exists: ${filePath}`);
