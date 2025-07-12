@@ -10,6 +10,7 @@ export interface AppSettings {
   temperature: number;
   custom_prompt?: string;
   gemini_model?: string;
+  embed_images?: boolean;
 }
 
 export interface PromptPreset {

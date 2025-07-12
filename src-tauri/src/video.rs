@@ -6,21 +6,38 @@ use log::debug;
 // Removed deprecated tauri::api::process::Command import
 
 fn find_executable(name: &str) -> Result<PathBuf> {
-    // First, check common paths for Homebrew
-    let common_paths = ["/opt/homebrew/bin", "/usr/local/bin"];
+    // First, check common paths for Homebrew and system installations
+    let common_paths = [
+        "/opt/homebrew/bin",      // Homebrew on Apple Silicon
+        "/usr/local/bin",         // Homebrew on Intel Mac / general Unix
+        "/usr/bin",               // System binaries
+        "/bin",                   // Core system binaries
+        "/opt/local/bin",         // MacPorts
+        "/sw/bin",                // Fink
+        "/usr/local/opt/ffmpeg/bin", // Homebrew ffmpeg formula specific
+        "/opt/homebrew/opt/ffmpeg/bin", // Homebrew ffmpeg on Apple Silicon
+    ];
+    
     for path in common_paths.iter() {
         let executable_path = Path::new(path).join(name);
         if executable_path.is_file() {
+            debug!("Found {} at: {:?}", name, executable_path);
             return Ok(executable_path);
         }
     }
 
     // If not found, use the `which` crate to search in PATH
+    debug!("Searching for {} in PATH environment variable", name);
     which::which(name).map_err(|e| {
+        // Log all the paths we searched
+        debug!("Failed to find {} in common paths: {:?}", name, common_paths);
+        debug!("PATH environment variable: {:?}", std::env::var("PATH"));
+        
         anyhow!(
-            "Failed to find '{}' executable: {}. Please ensure it is installed and in your PATH.",
+            "Failed to find '{}' executable: {}. Please ensure it is installed and in your PATH. Searched in: {:?}",
             name,
-            e
+            e,
+            common_paths
         )
     })
 }
@@ -110,4 +127,39 @@ pub async fn split_video_if_needed(video_path: &Path) -> Result<Vec<PathBuf>> {
     }
 
     Ok(segment_paths)
+}
+
+/// Extracts a frame from a video at the specified timestamp and saves it as an image
+pub async fn extract_frame_from_video(
+    video_path: &str,
+    timestamp: f64,
+    output_path: &str,
+) -> Result<()> {
+    debug!("Extracting frame from video: {} at timestamp: {}s", video_path, timestamp);
+    
+    let ffmpeg_path = find_executable("ffmpeg")?;
+    
+    let status = Command::new(&ffmpeg_path)
+        .args([
+            "-i",
+            video_path,
+            "-ss",
+            &timestamp.to_string(),
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
+            "-y",
+            output_path,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .status()?;
+    
+    if !status.success() {
+        return Err(anyhow!("Failed to extract frame from video at timestamp {}s", timestamp));
+    }
+    
+    debug!("Successfully extracted frame to: {}", output_path);
+    Ok(())
 }

@@ -156,7 +156,8 @@ function App() {
         settings: {
           ...settings,
           custom_prompt: currentPrompt || undefined
-        }
+        },
+        saveDirectory: currentSaveDirectory
       });
       addLog("✅ Document generation completed successfully");
       setGeneratedDocument(result);
