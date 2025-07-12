@@ -14,7 +14,7 @@ jobs:
       fail-fast: false
       matrix:
         settings:
-          - platform: macos-14
+          - platform: macos-latest
             artifact-name: document-encoder-macos
             build-path: "src-tauri/target/release/bundle/dmg"
             file-pattern: "*.dmg"
@@ -35,22 +35,14 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Cache Rust dependencies
-        uses: actions/cache@v4
+        uses: swatinem/rust-cache@v2
         with:
-          path: |
-            ~/.cargo/bin/
-            ~/.cargo/registry/index/
-            ~/.cargo/registry/cache/
-            ~/.cargo/git/db/
-            src-tauri/target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-cargo-
+          workspaces: "./src-tauri -> target"
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: "20"
+          node-version: "18"
           cache: "npm"
 
       - name: Install frontend dependencies
@@ -60,47 +52,133 @@ jobs:
         run: npm run build
 
       - name: Build Tauri app
-        run: npm run tauri build
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          args: ""
 
+      # Create timestamp for filename
       - name: Create timestamp
         id: timestamp
         run: echo "timestamp=$(date +%Y-%m-%d-%H-%M-%S)" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Find and prepare artifact
-        id: find-artifact
+      # Find and prepare artifact for Windows
+      - name: Find artifact (Windows)
+        if: runner.os == 'Windows'
+        id: find-artifact-windows
+        shell: pwsh
+        run: |
+          $artifactPath = Get-ChildItem -Path "${{ matrix.settings.build-path }}" -Filter "${{ matrix.settings.file-pattern }}" | Select-Object -First 1
+          if (-not $artifactPath) {
+            Write-Error "No artifact found in ${{ matrix.settings.build-path }}"
+            exit 1
+          }
+          $filename = "${{ matrix.settings.upload-name }}-${{ steps.timestamp.outputs.timestamp }}.msi"
+          "artifact-path=$($artifactPath.FullName)" >> $env:GITHUB_OUTPUT
+          "filename=$filename" >> $env:GITHUB_OUTPUT
+          Write-Host "Found artifact: $($artifactPath.FullName)"
+          Write-Host "Upload filename: $filename"
+
+      # Find and prepare artifact for Unix-like systems
+      - name: Find artifact (Unix)
+        if: runner.os != 'Windows'
+        id: find-artifact-unix
         shell: bash
         run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ARTIFACT_PATH=$(find "${{ matrix.settings.build-path }}" -name "${{ matrix.settings.file-pattern }}" -type f | head -1)
-            EXT=".msi"
-          else
-            ARTIFACT_PATH=$(find "${{ matrix.settings.build-path }}" -name "${{ matrix.settings.file-pattern }}" -type f | head -1)
-            EXT=".dmg"
-          fi
-
+          ARTIFACT_PATH=$(find "${{ matrix.settings.build-path }}" -name "${{ matrix.settings.file-pattern }}" -type f | head -1)
           if [[ -z "$ARTIFACT_PATH" ]]; then
             echo "Error: No artifact found in ${{ matrix.settings.build-path }}"
             exit 1
           fi
-
-          FILENAME="${{ matrix.settings.upload-name }}-${{ steps.timestamp.outputs.timestamp }}${EXT}"
+          FILENAME="${{ matrix.settings.upload-name }}-${{ steps.timestamp.outputs.timestamp }}.dmg"
           echo "artifact-path=$ARTIFACT_PATH" >> $GITHUB_OUTPUT
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
           echo "Found artifact: $ARTIFACT_PATH"
           echo "Upload filename: $FILENAME"
 
-      - name: Upload to Google Drive
-        uses: Jodebu/upload-to-drive@master
-        with:
-          credentials: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
-          target: ${{ steps.find-artifact.outputs.artifact-path }}
-          folder: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          name: ${{ steps.find-artifact.outputs.filename }}
-
+      # Upload build artifacts to GitHub (for later Google Drive upload)
       - name: Upload build artifacts to GitHub
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.settings.artifact-name }}-${{ steps.timestamp.outputs.timestamp }}
-          path: ${{ steps.find-artifact.outputs.artifact-path }}
+          path: ${{ steps.find-artifact-windows.outputs.artifact-path || steps.find-artifact-unix.outputs.artifact-path }}
           retention-days: 30
+
+      # Save metadata for upload job
+      - name: Save upload metadata
+        shell: bash
+        run: |
+          mkdir -p upload-metadata
+          echo "${{ steps.find-artifact-windows.outputs.filename || steps.find-artifact-unix.outputs.filename }}" > upload-metadata/filename.txt
+          echo "${{ matrix.settings.upload-name }}" > upload-metadata/upload-name.txt
+          echo "${{ steps.timestamp.outputs.timestamp }}" > upload-metadata/timestamp.txt
+
+      - name: Upload metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: upload-metadata-${{ matrix.settings.artifact-name }}-${{ steps.timestamp.outputs.timestamp }}
+          path: upload-metadata/
+          retention-days: 1
+
+  # Separate job for Google Drive upload (runs on Linux)
+  upload-to-drive:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - artifact-name: document-encoder-macos
+            upload-name: "DocumentEncoder-macOS"
+          - artifact-name: document-encoder-windows
+            upload-name: "DocumentEncoder-Windows"
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ matrix.settings.artifact-name }}-*
+          merge-multiple: true
+
+      - name: Download metadata
+        uses: actions/download-artifact@v4
+        with:
+          pattern: upload-metadata-${{ matrix.settings.artifact-name }}-*
+          merge-multiple: true
+          path: metadata/
+
+      - name: Read metadata and find artifact
+        id: artifact-info
+        shell: bash
+        run: |
+          FILENAME=$(cat metadata/filename.txt)
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+
+          # Find the downloaded artifact
+          ARTIFACT=$(find . -name "*.dmg" -o -name "*.msi" | head -1)
+          if [[ -z "$ARTIFACT" ]]; then
+            echo "Error: No artifact file found"
+            exit 1
+          fi
+          echo "artifact-path=$ARTIFACT" >> $GITHUB_OUTPUT
+          echo "Found artifact: $ARTIFACT"
+          echo "Will upload as: $FILENAME"
+
+      - name: Upload to Google Drive
+        uses: adityak74/google-drive-upload-git-action@main
+        with:
+          credentials: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
+          filename: ${{ steps.artifact-info.outputs.artifact-path }}
+          folderId: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          name: ${{ steps.artifact-info.outputs.filename }}
+          overwrite: "true"
