@@ -16,30 +16,42 @@ jobs:
       fail-fast: false
       matrix:
         settings:
-          - platform: macos-latest
+          - platform: macos-13
             artifact-name: document-encoder-macos
-            upload-name: DocumentEncoder-macOS-${{ github.event.head_commit.timestamp }}.dmg
+            build-path: "src-tauri/target/release/bundle/dmg"
+            file-pattern: "*.dmg"
+            upload-name: "DocumentEncoder-macOS"
           - platform: windows-latest
             artifact-name: document-encoder-windows
-            upload-name: DocumentEncoder-Windows-${{ github.event.head_commit.timestamp }}.msi
+            build-path: "src-tauri/target/release/bundle/msi"
+            file-pattern: "*.msi"
+            upload-name: "DocumentEncoder-Windows"
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Rust setup
+      - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
-      - name: Rust cache
-        uses: swatinem/rust-cache@v2
+      - name: Cache Rust dependencies
+        uses: actions/cache@v4
         with:
-          workspaces: "./src-tauri -> target"
+          path: |
+            ~/.cargo/bin/
+            ~/.cargo/registry/index/
+            ~/.cargo/registry/cache/
+            ~/.cargo/git/db/
+            src-tauri/target/
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
 
-      - name: Node.js setup
+      - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 18
-          cache: "npm"
+          node-version: '20'
+          cache: 'npm'
 
       - name: Install frontend dependencies
         run: npm ci
@@ -48,47 +60,54 @@ jobs:
         run: npm run build
 
       - name: Build Tauri app
-        uses: tauri-apps/tauri-action@v0
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
-          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
-          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          APPLE_ID: ${{ secrets.APPLE_ID }}
-          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
-          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
-        with:
-          args: ""
+        run: npm run tauri build
 
-      - name: Find built artifact (macOS)
-        if: matrix.settings.platform == 'macos-latest'
-        id: find-artifact-macos
+      - name: Get commit timestamp
+        id: timestamp
         run: |
-          ARTIFACT_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            TIMESTAMP=$(git log -1 --format=%ci | sed 's/[: ]/-/g' | sed 's/+.*$//')
+          else
+            TIMESTAMP=$(git log -1 --format=%ci | sed 's/[: ]/-/g' | sed 's/+.*$//')
+          fi
+          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+        shell: bash
+
+      - name: Find and upload artifact
+        id: find-artifact
+        shell: bash
+        run: |
+          if [[ "${{ runner.os }}" == "Windows" ]]; then
+            ARTIFACT_PATH=$(find "${{ matrix.settings.build-path }}" -name "${{ matrix.settings.file-pattern }}" | head -1)
+            EXT=".msi"
+          else
+            ARTIFACT_PATH=$(find "${{ matrix.settings.build-path }}" -name "${{ matrix.settings.file-pattern }}" | head -1)
+            EXT=".dmg"
+          fi
+          
+          if [[ -z "$ARTIFACT_PATH" ]]; then
+            echo "Error: No artifact found in ${{ matrix.settings.build-path }}"
+            exit 1
+          fi
+          
+          FILENAME="${{ matrix.settings.upload-name }}-${{ steps.timestamp.outputs.timestamp }}${EXT}"
           echo "artifact-path=$ARTIFACT_PATH" >> $GITHUB_OUTPUT
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
           echo "Found artifact: $ARTIFACT_PATH"
-
-      - name: Find built artifact (Windows)
-        if: matrix.settings.platform == 'windows-latest'
-        id: find-artifact-windows
-        shell: powershell
-        run: |
-          $ArtifactPath = Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi" | Select-Object -First 1 -ExpandProperty FullName
-          echo "artifact-path=$ArtifactPath" >> $env:GITHUB_OUTPUT
-          echo "Found artifact: $ArtifactPath"
+          echo "Upload filename: $FILENAME"
 
       - name: Upload to Google Drive
         uses: adityak74/google-drive-upload-git-action@main
         with:
           credentials: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
-          filename: ${{ steps.find-artifact-macos.outputs.artifact-path || steps.find-artifact-windows.outputs.artifact-path }}
+          filename: ${{ steps.find-artifact.outputs.artifact-path }}
           folderId: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          name: ${{ matrix.settings.upload-name }}
+          name: ${{ steps.find-artifact.outputs.filename }}
           overwrite: "true"
 
       - name: Upload build artifacts to GitHub
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ matrix.settings.artifact-name }}
-          path: ${{ steps.find-artifact-macos.outputs.artifact-path || steps.find-artifact-windows.outputs.artifact-path }}
+          name: ${{ matrix.settings.artifact-name }}-${{ steps.timestamp.outputs.timestamp }}
+          path: ${{ steps.find-artifact.outputs.artifact-path }}
           retention-days: 30
