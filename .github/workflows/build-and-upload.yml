@@ -1,0 +1,98 @@
+name: Build and Upload to Google Drive
+
+on:
+  push:
+    branches: [ develop ]
+  pull_request:
+    branches: [ develop ]
+    types: [ closed ]
+
+jobs:
+  build-and-upload:
+    if: github.event_name == 'push' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'develop')
+    runs-on: ${{ matrix.os }}
+    
+    strategy:
+      matrix:
+        os: [macos-latest, windows-latest]
+        include:
+          - os: macos-latest
+            artifact-name: document-encoder-macos
+            build-path: src-tauri/target/release/bundle/dmg/*.dmg
+            upload-name: DocumentEncoder-macOS-v${{ github.run_number }}.dmg
+          - os: windows-latest
+            artifact-name: document-encoder-windows
+            build-path: src-tauri/target/release/bundle/msi/*.msi
+            upload-name: DocumentEncoder-Windows-v${{ github.run_number }}.msi
+
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '20'
+        cache: 'npm'
+
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@stable
+
+    - name: Cache Rust dependencies
+      uses: actions/cache@v4
+      with:
+        path: |
+          ~/.cargo/bin/
+          ~/.cargo/registry/index/
+          ~/.cargo/registry/cache/
+          ~/.cargo/git/db/
+          src-tauri/target/
+        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+
+    - name: Install dependencies (Ubuntu)
+      if: matrix.os == 'ubuntu-latest'
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+
+    - name: Install frontend dependencies
+      run: npm ci
+
+    - name: Build frontend
+      run: npm run build
+
+    - name: Build Tauri app
+      run: npm run tauri build
+
+    - name: Find built artifact (macOS)
+      if: matrix.os == 'macos-latest'
+      id: find-artifact-macos
+      run: |
+        ARTIFACT_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+        echo "artifact-path=$ARTIFACT_PATH" >> $GITHUB_OUTPUT
+        echo "Found artifact: $ARTIFACT_PATH"
+
+    - name: Find built artifact (Windows)
+      if: matrix.os == 'windows-latest'
+      id: find-artifact-windows
+      shell: powershell
+      run: |
+        $ArtifactPath = Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi" | Select-Object -First 1 -ExpandProperty FullName
+        echo "artifact-path=$ArtifactPath" >> $env:GITHUB_OUTPUT
+        echo "Found artifact: $ArtifactPath"
+
+    - name: Upload to Google Drive
+      uses: adityak74/google-drive-upload-git-action@main
+      with:
+        credentials: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
+        filename: ${{ steps.find-artifact-macos.outputs.artifact-path || steps.find-artifact-windows.outputs.artifact-path }}
+        folderId: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+        name: ${{ matrix.upload-name }}
+        overwrite: "true"
+
+    - name: Upload build artifacts to GitHub
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ matrix.artifact-name }}
+        path: ${{ steps.find-artifact-macos.outputs.artifact-path || steps.find-artifact-windows.outputs.artifact-path }}
+        retention-days: 30
