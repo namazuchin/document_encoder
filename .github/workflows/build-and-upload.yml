@@ -2,97 +2,93 @@ name: Build and Upload to Google Drive
 
 on:
   push:
-    branches: [ develop ]
+    branches: [develop]
   pull_request:
-    branches: [ develop ]
-    types: [ closed ]
+    branches: [develop]
+    types: [closed]
 
 jobs:
   build-and-upload:
     if: github.event_name == 'push' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'develop')
-    runs-on: ${{ matrix.os }}
-    
+    runs-on: ${{ matrix.settings.platform }}
+
     strategy:
+      fail-fast: false
       matrix:
-        os: [macos-latest, windows-latest]
-        include:
-          - os: macos-latest
+        settings:
+          - platform: macos-latest
             artifact-name: document-encoder-macos
-            build-path: src-tauri/target/release/bundle/dmg/*.dmg
-            upload-name: DocumentEncoder-macOS-v${{ github.run_number }}.dmg
-          - os: windows-latest
+            upload-name: DocumentEncoder-macOS-${{ github.event.head_commit.timestamp }}.dmg
+          - platform: windows-latest
             artifact-name: document-encoder-windows
-            build-path: src-tauri/target/release/bundle/msi/*.msi
-            upload-name: DocumentEncoder-Windows-v${{ github.run_number }}.msi
+            upload-name: DocumentEncoder-Windows-${{ github.event.head_commit.timestamp }}.msi
 
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - name: Checkout repository
+        uses: actions/checkout@v4
 
-    - name: Setup Node.js
-      uses: actions/setup-node@v4
-      with:
-        node-version: '20'
-        cache: 'npm'
+      - name: Rust setup
+        uses: dtolnay/rust-toolchain@stable
 
-    - name: Setup Rust
-      uses: dtolnay/rust-toolchain@stable
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: "./src-tauri -> target"
 
-    - name: Cache Rust dependencies
-      uses: actions/cache@v4
-      with:
-        path: |
-          ~/.cargo/bin/
-          ~/.cargo/registry/index/
-          ~/.cargo/registry/cache/
-          ~/.cargo/git/db/
-          src-tauri/target/
-        key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+      - name: Node.js setup
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: "npm"
 
-    - name: Install dependencies (Ubuntu)
-      if: matrix.os == 'ubuntu-latest'
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y libgtk-3-dev libwebkit2gtk-4.0-dev libappindicator3-dev librsvg2-dev patchelf
+      - name: Install frontend dependencies
+        run: npm ci
 
-    - name: Install frontend dependencies
-      run: npm ci
+      - name: Build frontend
+        run: npm run build
 
-    - name: Build frontend
-      run: npm run build
+      - name: Build Tauri app
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        with:
+          args: ""
 
-    - name: Build Tauri app
-      run: npm run tauri build
+      - name: Find built artifact (macOS)
+        if: matrix.settings.platform == 'macos-latest'
+        id: find-artifact-macos
+        run: |
+          ARTIFACT_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
+          echo "artifact-path=$ARTIFACT_PATH" >> $GITHUB_OUTPUT
+          echo "Found artifact: $ARTIFACT_PATH"
 
-    - name: Find built artifact (macOS)
-      if: matrix.os == 'macos-latest'
-      id: find-artifact-macos
-      run: |
-        ARTIFACT_PATH=$(find src-tauri/target/release/bundle/dmg -name "*.dmg" | head -1)
-        echo "artifact-path=$ARTIFACT_PATH" >> $GITHUB_OUTPUT
-        echo "Found artifact: $ARTIFACT_PATH"
+      - name: Find built artifact (Windows)
+        if: matrix.settings.platform == 'windows-latest'
+        id: find-artifact-windows
+        shell: powershell
+        run: |
+          $ArtifactPath = Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi" | Select-Object -First 1 -ExpandProperty FullName
+          echo "artifact-path=$ArtifactPath" >> $env:GITHUB_OUTPUT
+          echo "Found artifact: $ArtifactPath"
 
-    - name: Find built artifact (Windows)
-      if: matrix.os == 'windows-latest'
-      id: find-artifact-windows
-      shell: powershell
-      run: |
-        $ArtifactPath = Get-ChildItem -Path "src-tauri/target/release/bundle/msi" -Filter "*.msi" | Select-Object -First 1 -ExpandProperty FullName
-        echo "artifact-path=$ArtifactPath" >> $env:GITHUB_OUTPUT
-        echo "Found artifact: $ArtifactPath"
+      - name: Upload to Google Drive
+        uses: adityak74/google-drive-upload-git-action@main
+        with:
+          credentials: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
+          filename: ${{ steps.find-artifact-macos.outputs.artifact-path || steps.find-artifact-windows.outputs.artifact-path }}
+          folderId: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          name: ${{ matrix.settings.upload-name }}
+          overwrite: "true"
 
-    - name: Upload to Google Drive
-      uses: adityak74/google-drive-upload-git-action@main
-      with:
-        credentials: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
-        filename: ${{ steps.find-artifact-macos.outputs.artifact-path || steps.find-artifact-windows.outputs.artifact-path }}
-        folderId: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-        name: ${{ matrix.upload-name }}
-        overwrite: "true"
-
-    - name: Upload build artifacts to GitHub
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ matrix.artifact-name }}
-        path: ${{ steps.find-artifact-macos.outputs.artifact-path || steps.find-artifact-windows.outputs.artifact-path }}
-        retention-days: 30
+      - name: Upload build artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.settings.artifact-name }}
+          path: ${{ steps.find-artifact-macos.outputs.artifact-path || steps.find-artifact-windows.outputs.artifact-path }}
+          retention-days: 30
