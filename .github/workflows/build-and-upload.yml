@@ -1,15 +1,13 @@
 name: Build and Upload to Google Drive
 
 on:
-  push:
-    branches: [develop]
   pull_request:
     branches: [develop]
     types: [closed]
 
 jobs:
   build-and-upload:
-    if: github.event_name == 'push' || (github.event.pull_request.merged == true && github.event.pull_request.base.ref == 'develop')
+    if: github.event.pull_request.merged == true
     runs-on: ${{ matrix.settings.platform }}
 
     strategy:
