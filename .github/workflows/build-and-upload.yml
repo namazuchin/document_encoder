@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
@@ -50,8 +52,8 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
-          cache: 'npm'
+          node-version: "20"
+          cache: "npm"
 
       - name: Install frontend dependencies
         run: npm ci
@@ -62,52 +64,60 @@ jobs:
       - name: Build Tauri app
         run: npm run tauri build
 
-      - name: Get commit timestamp
+      # Create timestamp for filename
+      - name: Create timestamp
         id: timestamp
-        run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            TIMESTAMP=$(git log -1 --format=%ci | sed 's/[: ]/-/g' | sed 's/+.*$//')
-          else
-            TIMESTAMP=$(git log -1 --format=%ci | sed 's/[: ]/-/g' | sed 's/+.*$//')
-          fi
-          echo "timestamp=$TIMESTAMP" >> $GITHUB_OUTPUT
+        run: echo "timestamp=$(date +%Y-%m-%d-%H-%M-%S)" >> $GITHUB_OUTPUT
         shell: bash
 
-      - name: Find and upload artifact
-        id: find-artifact
+      # Find and prepare artifact for Windows
+      - name: Find artifact (Windows)
+        if: runner.os == 'Windows'
+        id: find-artifact-windows
+        shell: pwsh
+        run: |
+          $artifactPath = Get-ChildItem -Path "${{ matrix.settings.build-path }}" -Filter "${{ matrix.settings.file-pattern }}" | Select-Object -First 1
+          if (-not $artifactPath) {
+            Write-Error "No artifact found in ${{ matrix.settings.build-path }}"
+            exit 1
+          }
+          $filename = "${{ matrix.settings.upload-name }}-${{ steps.timestamp.outputs.timestamp }}.msi"
+          "artifact-path=$($artifactPath.FullName)" >> $env:GITHUB_OUTPUT
+          "filename=$filename" >> $env:GITHUB_OUTPUT
+          Write-Host "Found artifact: $($artifactPath.FullName)"
+          Write-Host "Upload filename: $filename"
+
+      # Find and prepare artifact for Unix-like systems
+      - name: Find artifact (Unix)
+        if: runner.os != 'Windows'
+        id: find-artifact-unix
         shell: bash
         run: |
-          if [[ "${{ runner.os }}" == "Windows" ]]; then
-            ARTIFACT_PATH=$(find "${{ matrix.settings.build-path }}" -name "${{ matrix.settings.file-pattern }}" | head -1)
-            EXT=".msi"
-          else
-            ARTIFACT_PATH=$(find "${{ matrix.settings.build-path }}" -name "${{ matrix.settings.file-pattern }}" | head -1)
-            EXT=".dmg"
-          fi
-          
+          ARTIFACT_PATH=$(find "${{ matrix.settings.build-path }}" -name "${{ matrix.settings.file-pattern }}" -type f | head -1)
           if [[ -z "$ARTIFACT_PATH" ]]; then
             echo "Error: No artifact found in ${{ matrix.settings.build-path }}"
             exit 1
           fi
-          
-          FILENAME="${{ matrix.settings.upload-name }}-${{ steps.timestamp.outputs.timestamp }}${EXT}"
+          FILENAME="${{ matrix.settings.upload-name }}-${{ steps.timestamp.outputs.timestamp }}.dmg"
           echo "artifact-path=$ARTIFACT_PATH" >> $GITHUB_OUTPUT
           echo "filename=$FILENAME" >> $GITHUB_OUTPUT
           echo "Found artifact: $ARTIFACT_PATH"
           echo "Upload filename: $FILENAME"
 
+      # Upload to Google Drive
       - name: Upload to Google Drive
         uses: adityak74/google-drive-upload-git-action@main
         with:
           credentials: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
-          filename: ${{ steps.find-artifact.outputs.artifact-path }}
+          filename: ${{ steps.find-artifact-windows.outputs.artifact-path || steps.find-artifact-unix.outputs.artifact-path }}
           folderId: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          name: ${{ steps.find-artifact.outputs.filename }}
+          name: ${{ steps.find-artifact-windows.outputs.filename || steps.find-artifact-unix.outputs.filename }}
           overwrite: "true"
 
+      # Upload to GitHub Artifacts
       - name: Upload build artifacts to GitHub
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.settings.artifact-name }}-${{ steps.timestamp.outputs.timestamp }}
-          path: ${{ steps.find-artifact.outputs.artifact-path }}
+          path: ${{ steps.find-artifact-windows.outputs.artifact-path || steps.find-artifact-unix.outputs.artifact-path }}
           retention-days: 30
