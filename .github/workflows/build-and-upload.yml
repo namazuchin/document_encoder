@@ -174,11 +174,19 @@ jobs:
           echo "Found artifact: $ARTIFACT"
           echo "Will upload as: $FILENAME"
 
-      - name: Upload to Google Drive
-        uses: adityak74/google-drive-upload-git-action@main
+      - name: Checkout repository for upload script
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js for upload
+        uses: actions/setup-node@v4
         with:
-          credentials: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
-          filename: ${{ steps.artifact-info.outputs.artifact-path }}
-          folderId: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          name: ${{ steps.artifact-info.outputs.filename }}
-          overwrite: "true"
+          node-version: "18"
+
+      - name: Upload to Google Drive
+        shell: bash
+        run: |
+          node scripts/upload-to-gdrive.js \
+            "${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}" \
+            "${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}" \
+            "${{ steps.artifact-info.outputs.artifact-path }}" \
+            "${{ steps.artifact-info.outputs.filename }}"
