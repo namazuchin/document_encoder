@@ -6,7 +6,7 @@ on:
     types: [closed]
 
 jobs:
-  build-and-upload:
+  build:
     if: github.event.pull_request.merged == true
     runs-on: ${{ matrix.settings.platform }}
 
@@ -102,20 +102,81 @@ jobs:
           echo "Found artifact: $ARTIFACT_PATH"
           echo "Upload filename: $FILENAME"
 
-      # Upload to Google Drive
-      - name: Upload to Google Drive
-        uses: adityak74/google-drive-upload-git-action@main
-        with:
-          credentials: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
-          filename: ${{ steps.find-artifact-windows.outputs.artifact-path || steps.find-artifact-unix.outputs.artifact-path }}
-          folderId: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
-          name: ${{ steps.find-artifact-windows.outputs.filename || steps.find-artifact-unix.outputs.filename }}
-          overwrite: "true"
-
-      # Upload to GitHub Artifacts
+      # Upload build artifacts to GitHub (for later Google Drive upload)
       - name: Upload build artifacts to GitHub
         uses: actions/upload-artifact@v4
         with:
           name: ${{ matrix.settings.artifact-name }}-${{ steps.timestamp.outputs.timestamp }}
           path: ${{ steps.find-artifact-windows.outputs.artifact-path || steps.find-artifact-unix.outputs.artifact-path }}
           retention-days: 30
+
+      # Save metadata for upload job
+      - name: Save upload metadata
+        shell: bash
+        run: |
+          mkdir -p upload-metadata
+          echo "${{ steps.find-artifact-windows.outputs.filename || steps.find-artifact-unix.outputs.filename }}" > upload-metadata/filename.txt
+          echo "${{ matrix.settings.upload-name }}" > upload-metadata/upload-name.txt
+          echo "${{ steps.timestamp.outputs.timestamp }}" > upload-metadata/timestamp.txt
+
+      - name: Upload metadata
+        uses: actions/upload-artifact@v4
+        with:
+          name: upload-metadata-${{ matrix.settings.artifact-name }}-${{ steps.timestamp.outputs.timestamp }}
+          path: upload-metadata/
+          retention-days: 1
+
+  # Separate job for Google Drive upload (runs on Linux)
+  upload-to-drive:
+    needs: build
+    runs-on: ubuntu-latest
+    if: github.event.pull_request.merged == true
+
+    strategy:
+      fail-fast: false
+      matrix:
+        settings:
+          - artifact-name: document-encoder-macos
+            upload-name: "DocumentEncoder-macOS"
+          - artifact-name: document-encoder-windows
+            upload-name: "DocumentEncoder-Windows"
+
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: ${{ matrix.settings.artifact-name }}-*
+          merge-multiple: true
+
+      - name: Download metadata
+        uses: actions/download-artifact@v4
+        with:
+          pattern: upload-metadata-${{ matrix.settings.artifact-name }}-*
+          merge-multiple: true
+          path: metadata/
+
+      - name: Read metadata and find artifact
+        id: artifact-info
+        shell: bash
+        run: |
+          FILENAME=$(cat metadata/filename.txt)
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+
+          # Find the downloaded artifact
+          ARTIFACT=$(find . -name "*.dmg" -o -name "*.msi" | head -1)
+          if [[ -z "$ARTIFACT" ]]; then
+            echo "Error: No artifact file found"
+            exit 1
+          fi
+          echo "artifact-path=$ARTIFACT" >> $GITHUB_OUTPUT
+          echo "Found artifact: $ARTIFACT"
+          echo "Will upload as: $FILENAME"
+
+      - name: Upload to Google Drive
+        uses: adityak74/google-drive-upload-git-action@main
+        with:
+          credentials: ${{ secrets.GOOGLE_DRIVE_CREDENTIALS }}
+          filename: ${{ steps.artifact-info.outputs.artifact-path }}
+          folderId: ${{ secrets.GOOGLE_DRIVE_FOLDER_ID }}
+          name: ${{ steps.artifact-info.outputs.filename }}
+          overwrite: "true"
