@@ -1,4 +1,5 @@
 import { PromptPreset } from '../types';
+import { FaPlus, FaUpload, FaDownload, FaTimes, FaEdit, FaTrash, FaExclamationTriangle } from 'react-icons/fa';
 
 interface PromptSettingsProps {
   promptPresets: PromptPreset[];
@@ -49,13 +50,15 @@ export default function PromptSettings({
                   <div className="preset-actions">
                     {!preset.is_default && (
                       <>
-                        <button onClick={(e) => { e.stopPropagation(); onEditPreset(preset); }}>編集</button>
+                        <button onClick={(e) => { e.stopPropagation(); onEditPreset(preset); }}>
+                          <FaEdit className="icon" /> 編集
+                        </button>
                         <button 
                           onClick={(e) => { e.stopPropagation(); onDeletePreset(preset.id); }}
                           disabled={isDeleting || showDeleteConfirm}
                           className={isDeleting ? 'deleting' : ''}
                         >
-                          {isDeleting ? '削除中...' : '削除'}
+                          <FaTrash className="icon" /> {isDeleting ? '削除中...' : '削除'}
                         </button>
                       </>
                     )}
@@ -64,14 +67,22 @@ export default function PromptSettings({
               ))}
             </div>
             <div className="button-group">
-              <button onClick={onNewPreset}>新規プリセット作成</button>
-              <button onClick={onImportXML}>XMLファイルから読み込み</button>
-              <button onClick={onExportXML}>XMLファイルにエクスポート</button>
+              <button onClick={onNewPreset}>
+                <FaPlus className="icon" /> 新規プリセット作成
+              </button>
+              <button onClick={onImportXML}>
+                <FaUpload className="icon" /> XMLファイルから読み込み
+              </button>
+              <button onClick={onExportXML}>
+                <FaDownload className="icon" /> XMLファイルにエクスポート
+              </button>
             </div>
           </div>
           
           <div className="button-group">
-            <button onClick={onClose}>閉じる</button>
+            <button onClick={onClose}>
+              <FaTimes className="icon" /> 閉じる
+            </button>
           </div>
         </div>
 
@@ -83,7 +94,7 @@ export default function PromptSettings({
                 「{promptPresets.find(p => p.id === deleteTargetId)?.name || 'このプリセット'}」を削除しますか？
               </p>
               <p className="warning-text">
-                ⚠️ この操作は取り消せません。
+                <FaExclamationTriangle className="warning-icon" /> この操作は取り消せません。
               </p>
               <div className="modal-buttons">
                 <button className="delete-confirm-btn" onClick={onConfirmDelete}>

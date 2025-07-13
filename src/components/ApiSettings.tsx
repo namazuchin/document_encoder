@@ -1,4 +1,5 @@
 import { AppSettings } from '../types';
+import { FaSave, FaTimes, FaKey, FaThermometerHalf, FaRobot } from 'react-icons/fa';
 
 interface ApiSettingsProps {
   settings: AppSettings;
@@ -14,7 +15,7 @@ export default function ApiSettings({ settings, onUpdateSettings, onClose, onSav
         <h1>API設定</h1>
         <div className="settings-form">
           <div className="form-group">
-            <label htmlFor="apiKey">Gemini API Key:</label>
+            <label htmlFor="apiKey"><FaKey className="icon" /> Gemini API Key:</label>
             <input
               type="password"
               id="apiKey"
@@ -25,7 +26,7 @@ export default function ApiSettings({ settings, onUpdateSettings, onClose, onSav
           </div>
           
           <div className="form-group">
-            <label htmlFor="temperature">Temperature (0.0 - 1.0):</label>
+            <label htmlFor="temperature"><FaThermometerHalf className="icon" /> Temperature (0.0 - 1.0):</label>
             <input
               type="number"
               id="temperature"
@@ -42,7 +43,7 @@ export default function ApiSettings({ settings, onUpdateSettings, onClose, onSav
           </div>
           
           <div className="form-group">
-            <label htmlFor="geminiModel">Gemini Model:</label>
+            <label htmlFor="geminiModel"><FaRobot className="icon" /> Gemini Model:</label>
             <select
               id="geminiModel"
               value={settings.gemini_model || 'gemini-2.5-pro'}
@@ -58,8 +59,12 @@ export default function ApiSettings({ settings, onUpdateSettings, onClose, onSav
           </div>
           
           <div className="button-group">
-            <button onClick={onSave}>保存</button>
-            <button onClick={onClose}>キャンセル</button>
+            <button onClick={onSave}>
+              <FaSave className="icon" /> 保存
+            </button>
+            <button onClick={onClose}>
+              <FaTimes className="icon" /> キャンセル
+            </button>
           </div>
         </div>
       </div>

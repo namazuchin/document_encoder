@@ -1,5 +1,18 @@
 import React, { useRef } from 'react';
 import { VideoFile, AppSettings, PromptPreset } from '../types';
+import { 
+  FaPlay, 
+  FaCog, 
+  FaEdit, 
+  FaFolder, 
+  FaFileVideo, 
+  FaTimes, 
+  FaEye, 
+  FaEyeSlash, 
+  FaTrash, 
+  FaLanguage,
+  FaImage
+} from 'react-icons/fa';
 
 interface MainDashboardProps {
   settings: AppSettings;
@@ -82,10 +95,10 @@ export default function MainDashboard({
         <h1>Document Encoder</h1>
         <div className="header-buttons">
           <button className="settings-btn" onClick={onShowSettings}>
-            API設定
+            <FaCog className="icon" /> API設定
           </button>
           <button className="settings-btn" onClick={onShowPromptSettings}>
-            プロンプト設定
+            <FaEdit className="icon" /> プロンプト設定
           </button>
         </div>
       </header>
@@ -95,7 +108,7 @@ export default function MainDashboard({
           <div className="prompt-section">
             <h2>プロンプト設定</h2>
             <div className="prompt-controls">
-              <div className="prompt-row">
+              <div className="settings-grid">
                 <div className="setting-group">
                   <label htmlFor="presetSelect">プリセット選択:</label>
                   <select 
@@ -110,7 +123,7 @@ export default function MainDashboard({
                   </select>
                 </div>
                 <div className="setting-group">
-                  <label htmlFor="language">ドキュメント出力言語:</label>
+                  <label htmlFor="language"><FaLanguage className="icon" /> ドキュメント出力言語:</label>
                   <select 
                     id="language"
                     value={settings.language}
@@ -120,17 +133,19 @@ export default function MainDashboard({
                     <option value="english">English</option>
                   </select>
                 </div>
-                <div className="setting-group">
-                  <label htmlFor="embedImages">
-                    <input
-                      type="checkbox"
-                      id="embedImages"
-                      checked={settings.embed_images || false}
-                      onChange={handleEmbedImagesChange}
-                    />
-                    ドキュメントに画像を埋め込む
-                  </label>
-                </div>
+              </div>
+              <div className="checkbox-group">
+                <label className="checkbox-label" htmlFor="embedImages">
+                  <input
+                    type="checkbox"
+                    id="embedImages"
+                    checked={settings.embed_images || false}
+                    onChange={handleEmbedImagesChange}
+                  />
+                  <span className="checkbox-text">
+                    <FaImage className="icon" /> ドキュメントに画像を埋め込む
+                  </span>
+                </label>
               </div>
               <div className="prompt-editor">
                 <label htmlFor="promptText">現在のプロンプト:</label>
@@ -148,7 +163,7 @@ export default function MainDashboard({
           <div className="file-selection">
             <h2>動画ファイル選択</h2>
             <button className="file-select-btn" onClick={onFileSelect}>
-              ファイルを選択
+              <FaFileVideo className="icon" /> ファイルを選択
             </button>
             
             {selectedFiles.length > 0 && (
@@ -163,7 +178,7 @@ export default function MainDashboard({
                         className="remove-btn"
                         onClick={() => onRemoveFile(index)}
                       >
-                        削除
+                        <FaTimes className="icon" /> 削除
                       </button>
                     </div>
                   ))}
@@ -175,7 +190,7 @@ export default function MainDashboard({
           <div className="save-directory-section">
             <h2>保存設定</h2>
             <button className="directory-select-btn" onClick={onSelectSaveDirectory}>
-              保存先を変更
+              <FaFolder className="icon" /> 保存先を変更
             </button>
             <p className="directory-preview">
               保存先: {saveDirectory || "未選択"}
@@ -191,7 +206,7 @@ export default function MainDashboard({
               onClick={onGenerateDocument}
               disabled={isProcessing || selectedFiles.length === 0}
             >
-              {isProcessing ? "処理中..." : "ドキュメント生成"}
+              <FaPlay className="icon" /> {isProcessing ? "処理中..." : "ドキュメント生成"}
             </button>
           </div>
         </div>
@@ -220,14 +235,14 @@ export default function MainDashboard({
                     className="log-toggle-btn"
                     onClick={onToggleLogs}
                   >
-                    {showLogs ? '非表示' : '表示'}
+                    {showLogs ? <><FaEyeSlash className="icon" /> 非表示</> : <><FaEye className="icon" /> 表示</>}
                   </button>
                   {logs.length > 0 && (
                     <button 
                       className="log-clear-btn"
                       onClick={onClearLogs}
                     >
-                      クリア
+                      <FaTrash className="icon" /> クリア
                     </button>
                   )}
                 </div>
