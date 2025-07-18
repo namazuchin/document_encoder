@@ -7,8 +7,8 @@ use tauri::Emitter;
 use tokio::time::{sleep, Duration};
 
 use crate::types::{
-    GeminiRequest, GeminiContent, GeminiPart, GeminiFileData, GeminiResponse,
-    GeminiUploadResponse, GeminiGenerationConfig, ProgressUpdate, ImageEmbedFrequency
+    GeminiContent, GeminiFileData, GeminiGenerationConfig, GeminiPart, GeminiRequest,
+    GeminiResponse, GeminiUploadResponse, ImageEmbedFrequency, ProgressUpdate,
 };
 
 // Internal GeminiFileInfo for status polling (with optional fields)
@@ -177,7 +177,9 @@ where
     }
 
     println!("✅ [UPLOAD] File upload completed successfully");
-    let upload_info: GeminiUploadResponse = upload_response.json().await
+    let upload_info: GeminiUploadResponse = upload_response
+        .json()
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to parse upload response: {}", e))?;
     let file_name_on_server = upload_info.file.name.clone();
     println!(
@@ -217,7 +219,9 @@ where
             return Err(anyhow::anyhow!("Failed to get file status: {}", error_text));
         }
 
-        let file_info: GeminiFileStatus = get_response.json().await
+        let file_info: GeminiFileStatus = get_response
+            .json()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to parse file status response: {}", e))?;
 
         if let Some(state) = &file_info.state {
@@ -309,7 +313,18 @@ pub async fn generate_with_gemini_with_progress(
         }
     };
 
-    generate_with_gemini_internal(file_uris, language, api_key, temperature, custom_prompt, model, embed_images, image_embed_frequency, emit_progress).await
+    generate_with_gemini_internal(
+        file_uris,
+        language,
+        api_key,
+        temperature,
+        custom_prompt,
+        model,
+        embed_images,
+        image_embed_frequency,
+        emit_progress,
+    )
+    .await
 }
 
 pub async fn generate_with_gemini_internal<F>(
@@ -357,12 +372,12 @@ where
         5. Any relevant notes or recommendations
         
         {} and format it in a clear, professional manner.", language_instruction);
-        
+
         if embed_images {
             let image_instruction = get_image_instruction(image_embed_frequency);
             base_prompt.push_str(&image_instruction);
         }
-        
+
         base_prompt
     };
 
@@ -393,7 +408,10 @@ where
     println!("🌐 [GENERATE] Sending request to Gemini API...");
     emit_progress("Gemini AIにドキュメント生成を依頼中...".to_string());
     let response = client
-        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", model, api_key))
+        .post(format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            model, api_key
+        ))
         .json(&request)
         .send()
         .await?;
@@ -436,9 +454,11 @@ pub async fn integrate_documents(
     let client = reqwest::Client::new();
 
     let integration_prompt = if let Some(custom) = custom_prompt {
-        format!("{}\n\n=== Documents to integrate ===\n{}", 
-            custom, 
-            documents.iter()
+        format!(
+            "{}\n\n=== Documents to integrate ===\n{}",
+            custom,
+            documents
+                .iter()
                 .enumerate()
                 .map(|(i, doc)| format!("=== Document {} ===\n{}\n", i + 1, doc))
                 .collect::<Vec<_>>()
@@ -447,7 +467,7 @@ pub async fn integrate_documents(
     } else {
         let language_instruction = match language {
             "english" => "Please write the integrated document in English",
-            "japanese" | _ => "Please write the integrated document in Japanese",
+            "japanese" | _ => "ドキュメントは全て日本語で記述してください",
         };
 
         format!(
@@ -478,7 +498,10 @@ pub async fn integrate_documents(
     };
 
     let response = client
-        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", model, api_key))
+        .post(format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            model, api_key
+        ))
         .json(&request)
         .send()
         .await?;
@@ -584,8 +607,11 @@ pub async fn process_document_with_images(
             (full_match, timestamp)
         })
         .collect();
-    
-    println!("📊 [IMAGE] Found {} screenshot references to process", matches.len());
+
+    println!(
+        "📊 [IMAGE] Found {} screenshot references to process",
+        matches.len()
+    );
 
     // Get video durations to help determine which video contains the timestamp
     let mut video_durations = Vec::new();
@@ -601,52 +627,64 @@ pub async fn process_document_with_images(
 
     for (placeholder, timestamp) in matches {
         let mut frame_extracted = false;
-        
+
         // First, try to find the most appropriate video based on timestamp and duration
         let mut video_candidates: Vec<(usize, &String)> = video_files
             .iter()
             .enumerate()
             .filter(|(i, _)| timestamp <= video_durations[*i])
             .collect();
-        
+
         // If no video can contain this timestamp, try all videos as fallback
         if video_candidates.is_empty() {
             video_candidates = video_files.iter().enumerate().collect();
         }
-        
+
         // Try to extract frame from candidate videos
         for (video_index, video_path) in video_candidates {
             let video_no = video_index + 1; // 1-based indexing
-            // Replace decimal point with underscore for filename compatibility
+                                            // Replace decimal point with underscore for filename compatibility
             let timestamp_str = timestamp.to_string().replace('.', "_");
             let image_filename = format!("image-{}-{}s.png", video_no, timestamp_str);
             let image_path = images_dir.join(&image_filename);
-            
+
             // Extract frame from video
             match crate::video::extract_frame_from_video(
                 video_path,
                 timestamp,
                 image_path.to_str().unwrap(),
-            ).await {
+            )
+            .await
+            {
                 Ok(_) => {
                     let relative_image_path = format!("./images/{}", image_filename);
-                    let markdown_image = format!("![Screenshot {}]({})", image_counter, relative_image_path);
+                    let markdown_image =
+                        format!("![Screenshot {}]({})", image_counter, relative_image_path);
                     processed_document = processed_document.replace(&placeholder, &markdown_image);
                     image_counter += 1;
                     frame_extracted = true;
-                    println!("✅ Successfully extracted frame from video {} at {}s", video_no, timestamp);
+                    println!(
+                        "✅ Successfully extracted frame from video {} at {}s",
+                        video_no, timestamp
+                    );
                     break; // Stop trying other videos once successful
                 }
                 Err(e) => {
-                    println!("⚠️ Failed to extract frame from video {} at {}s: {}", video_no, timestamp, e);
+                    println!(
+                        "⚠️ Failed to extract frame from video {} at {}s: {}",
+                        video_no, timestamp, e
+                    );
                     // Continue to try next video
                 }
             }
         }
-        
+
         // If no video could provide the frame, remove the placeholder
         if !frame_extracted {
-            println!("❌ Failed to extract frame at {}s from any video", timestamp);
+            println!(
+                "❌ Failed to extract frame at {}s from any video",
+                timestamp
+            );
             processed_document = processed_document.replace(&placeholder, "");
         }
     }
