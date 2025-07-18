@@ -38,7 +38,7 @@
 .main-content {
   display: flex;
   flex: 1;
-  gap: 20px;
+  gap: 5px;
   overflow: hidden;
   /* 明示的な高さを指定 */
   height: calc(100vh - 120px);
