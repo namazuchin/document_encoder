@@ -401,55 +401,6 @@ fn target_quality_string(quality: &VideoQuality) -> &str {
     }
 }
 
-/// Detects available hardware encoders on the system
-pub async fn detect_hardware_encoders() -> Result<Vec<String>> {
-    debug!("Detecting available hardware encoders");
-    
-    let ffmpeg_path = find_executable("ffmpeg")?;
-    
-    // Get list of available encoders
-    let output = Command::new(&ffmpeg_path)
-        .args(["-encoders"])
-        .output()?;
-    
-    if !output.status.success() {
-        return Err(anyhow!("Failed to get encoder list from ffmpeg"));
-    }
-    
-    let encoder_list = String::from_utf8(output.stdout)?;
-    let mut available_encoders = Vec::new();
-    
-    // Check for common hardware encoders
-    let hardware_encoders = vec![
-        ("h264_videotoolbox", "Apple VideoToolbox H.264"),
-        ("h264_nvenc", "NVIDIA NVENC H.264"),
-        ("h264_qsv", "Intel Quick Sync H.264"),
-        ("h264_amf", "AMD AMF H.264"),
-        ("h264_vaapi", "VAAPI H.264"),
-        ("h264_v4l2m2m", "V4L2 Memory-to-Memory H.264"),
-    ];
-    
-    for (encoder_name, display_name) in hardware_encoders {
-        if encoder_list.contains(encoder_name) {
-            debug!("Found hardware encoder: {}", display_name);
-            available_encoders.push(display_name.to_string());
-        }
-    }
-    
-    debug!("Available hardware encoders: {:?}", available_encoders);
-    Ok(available_encoders)
-}
-
-/// Checks if hardware encoding is available on the system
-pub async fn is_hardware_encoding_available() -> bool {
-    match detect_hardware_encoders().await {
-        Ok(encoders) => !encoders.is_empty(),
-        Err(e) => {
-            debug!("Error detecting hardware encoders: {}", e);
-            false
-        }
-    }
-}
 
 /// Tests if a hardware encoder is actually working
 async fn test_hardware_encoder(encoder: &str) -> Result<()> {
