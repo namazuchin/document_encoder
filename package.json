@@ -4,8 +4,9 @@
   "version": "0.3.0",
   "type": "module",
   "scripts": {
+    "predev": "cp src-tauri/licenses-cargo.json public/licenses-cargo.json",
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "tsc && vite build && cp src-tauri/licenses-cargo.json ../dist/licenses-cargo.json",
     "preview": "vite preview",
     "tauri": "tauri"
   },

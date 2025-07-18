@@ -33,7 +33,6 @@ function App() {
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
   const [promptPresets, setPromptPresets] = useState<PromptPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
-  const [showPromptSettings, setShowPromptSettings] = useState(false);
   const [editingPreset, setEditingPreset] = useState<PromptPreset | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [newPresetName, setNewPresetName] = useState("");

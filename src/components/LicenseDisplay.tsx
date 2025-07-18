@@ -29,23 +29,36 @@ const LicenseDisplay: React.FC = () => {
     const fetchLicenses = async () => {
       try {
         setLoading(true);
-        // vite build後は dist/licenses.json に配置されるが、開発中は public/licenses.json を参照する
-        const npmRes = await fetch('/licenses.json');
-        const npmData = await npmRes.json();
-        setNpmLicenses(npmData.dependencies);
+        setError(null);
+        console.log("Fetching licenses...");
 
-        // cargo-aboutで生成したファイルは src-tauri にあるので、TauriのファイルシステムAPI経由で読む必要がある
-        // しかし、セキュリティ上の理由から直接fs APIを使うのは難しいため、
-        // ここではビルドプロセスで public ディレクトリにコピーされることを想定し、
-        // fetchで取得する。
-        // `tauri.conf.json` の `resources` に `"src-tauri/licenses-cargo.json"` を追加する必要がある。
+        // Fetch NPM licenses
+        console.log("Fetching /licenses.json...");
+        const npmRes = await fetch('/licenses.json');
+        console.log("NPM licenses response status:", npmRes.status);
+        if (!npmRes.ok) {
+          throw new Error(`Failed to fetch npm licenses: ${npmRes.statusText}`);
+        }
+        const npmData = await npmRes.json();
+        console.log("NPM licenses data:", npmData);
+        setNpmLicenses(npmData.dependencies || []);
+
+        // Fetch Cargo licenses
+        console.log("Fetching /licenses-cargo.json...");
         const cargoRes = await fetch('/licenses-cargo.json');
+        console.log("Cargo licenses response status:", cargoRes.status);
+        if (!cargoRes.ok) {
+          throw new Error(`Failed to fetch cargo licenses: ${cargoRes.statusText}`);
+        }
         const cargoData = await cargoRes.json();
-        setCargoLicenses(cargoData.licenses);
+        console.log("Cargo licenses data:", cargoData);
+        setCargoLicenses(cargoData.licenses || []);
+
+        console.log("Licenses fetched successfully.");
         
-      } catch (e) {
-        console.error(e);
-        setError('ライセンス情報の読み込みに失敗しました。');
+      } catch (e: any) {
+        console.error("Error fetching licenses:", e);
+        setError(`ライセンス情報の読み込みに失敗しました: ${e.message}`);
       } finally {
         setLoading(false);
       }

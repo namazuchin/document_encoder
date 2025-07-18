@@ -52,7 +52,8 @@
       "icons/icon.ico"
     ],
     "resources": [
-      "licenses-cargo.json"
+      "../public/licenses.json",
+      "../public/licenses-cargo.json"
     ],
     "macOS": {
       "hardenedRuntime": true,
