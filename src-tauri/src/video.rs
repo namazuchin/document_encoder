@@ -1,8 +1,17 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader};
 
 use anyhow::{anyhow, Result};
 use log::debug;
+
+use crate::types::VideoQuality;
+
+#[derive(Debug, Clone)]
+pub struct VideoResolution {
+    pub width: u32,
+    pub height: u32,
+}
 // Removed deprecated tauri::api::process::Command import
 
 fn find_executable(name: &str) -> Result<PathBuf> {
@@ -40,6 +49,49 @@ fn find_executable(name: &str) -> Result<PathBuf> {
             common_paths
         )
     })
+}
+
+/// Gets the resolution of a video file using ffprobe
+pub async fn get_video_resolution(video_path: &str) -> Result<VideoResolution> {
+    debug!("Getting video resolution for: {}", video_path);
+    let ffprobe_path = find_executable("ffprobe")?;
+
+    let output = Command::new(&ffprobe_path)
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=s=x:p=0",
+            video_path,
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("ffprobe failed: {}", stderr));
+    }
+
+    let resolution_str = String::from_utf8(output.stdout)?.trim().to_string();
+    debug!("Got resolution: {}", resolution_str);
+
+    let parts: Vec<&str> = resolution_str.split('x').collect();
+    if parts.len() != 2 {
+        return Err(anyhow!("Invalid resolution format: {}", resolution_str));
+    }
+
+    let width = parts[0].parse::<u32>().map_err(|e| {
+        anyhow!("Failed to parse width '{}': {}", parts[0], e)
+    })?;
+
+    let height = parts[1].parse::<u32>().map_err(|e| {
+        anyhow!("Failed to parse height '{}': {}", parts[1], e)
+    })?;
+
+    Ok(VideoResolution { width, height })
 }
 
 /// Gets the duration of a video file in seconds using ffprobe
@@ -162,4 +214,116 @@ pub async fn extract_frame_from_video(
     
     debug!("Successfully extracted frame to: {}", output_path);
     Ok(())
+}
+
+/// Encodes a video to the specified quality if conversion is needed
+/// Returns the path to the encoded video (or original if no conversion needed)
+pub async fn encode_video_if_needed<F>(
+    video_path: &str,
+    target_quality: &VideoQuality,
+    output_dir: &Path,
+    progress_callback: F,
+) -> Result<PathBuf>
+where
+    F: Fn(String),
+{
+    debug!("Checking if video encoding is needed for: {}", video_path);
+    
+    // If no conversion is requested, return original path
+    if *target_quality == VideoQuality::NoConversion {
+        return Ok(PathBuf::from(video_path));
+    }
+    
+    // Get current resolution
+    let current_resolution = get_video_resolution(video_path).await?;
+    debug!("Current resolution: {}x{}", current_resolution.width, current_resolution.height);
+    
+    // Determine target resolution
+    let (target_width, target_height) = match target_quality {
+        VideoQuality::Quality1080p => (1920, 1080),
+        VideoQuality::Quality720p => (1280, 720),
+        VideoQuality::Quality480p => (854, 480),
+        VideoQuality::NoConversion => unreachable!(),
+    };
+    
+    // Check if encoding is needed
+    let needs_encoding = current_resolution.height > target_height 
+        || (current_resolution.height == target_height && current_resolution.width > target_width);
+    
+    if !needs_encoding {
+        debug!("Video already at or below target quality, no encoding needed");
+        return Ok(PathBuf::from(video_path));
+    }
+    
+    progress_callback("動画のエンコードを開始しています...".to_string());
+    
+    let input_path = Path::new(video_path);
+    let filename = input_path.file_stem()
+        .ok_or_else(|| anyhow!("Invalid video file name"))?
+        .to_str()
+        .ok_or_else(|| anyhow!("Invalid video file name encoding"))?;
+    
+    let output_filename = format!("{}_{}.mp4", filename, target_quality_string(target_quality));
+    let output_path = output_dir.join(output_filename);
+    
+    debug!("Encoding video to: {:?}", output_path);
+    
+    let ffmpeg_path = find_executable("ffmpeg")?;
+    
+    // Get video duration for progress calculation
+    let duration = get_video_duration(video_path).await?;
+    
+    let mut command = Command::new(&ffmpeg_path)
+        .args([
+            "-i", video_path,
+            "-vf", &format!("scale={}:{}", target_width, target_height),
+            "-c:v", "libx264",
+            "-crf", "23",
+            "-c:a", "aac",
+            "-progress", "pipe:1",
+            "-y",
+            output_path.to_str().unwrap(),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    
+    // Monitor progress
+    if let Some(stdout) = command.stdout.take() {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    if line.starts_with("out_time_ms=") {
+                        if let Ok(time_ms) = line[12..].parse::<f64>() {
+                            let current_time = time_ms / 1_000_000.0; // Convert microseconds to seconds
+                            let progress_percent = ((current_time / duration) * 100.0).min(100.0);
+                            progress_callback(format!("エンコード中... {:.1}%", progress_percent));
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    }
+    
+    let status = command.wait()?;
+    
+    if !status.success() {
+        return Err(anyhow!("Video encoding failed"));
+    }
+    
+    progress_callback("エンコードが完了しました".to_string());
+    debug!("Video encoding completed: {:?}", output_path);
+    
+    Ok(output_path)
+}
+
+fn target_quality_string(quality: &VideoQuality) -> &str {
+    match quality {
+        VideoQuality::Quality1080p => "1080p",
+        VideoQuality::Quality720p => "720p", 
+        VideoQuality::Quality480p => "480p",
+        VideoQuality::NoConversion => "original",
+    }
 }

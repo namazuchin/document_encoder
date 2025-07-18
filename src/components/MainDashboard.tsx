@@ -1,5 +1,5 @@
 import React, { useRef } from 'react';
-import { VideoFile, AppSettings, PromptPreset } from '../types';
+import { VideoFile, AppSettings, PromptPreset, VideoQuality } from '../types';
 import { 
   FaPlay, 
   FaCog, 
@@ -11,7 +11,8 @@ import {
   FaEyeSlash, 
   FaTrash, 
   FaLanguage,
-  FaImage
+  FaImage,
+  FaVideo
 } from 'react-icons/fa';
 
 interface MainDashboardProps {
@@ -89,6 +90,11 @@ export default function MainDashboard({
     onUpdateSettings(newSettings);
   };
 
+  const handleVideoQualityChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newSettings = { ...settings, video_quality: e.target.value as VideoQuality };
+    onUpdateSettings(newSettings);
+  };
+
   return (
     <main className="container">
       <header className="header">
@@ -131,6 +137,19 @@ export default function MainDashboard({
                   >
                     <option value="japanese">日本語</option>
                     <option value="english">English</option>
+                  </select>
+                </div>
+                <div className="setting-group">
+                  <label htmlFor="videoQuality"><FaVideo className="icon" /> 動画画質:</label>
+                  <select 
+                    id="videoQuality"
+                    value={settings.video_quality || "NoConversion"}
+                    onChange={handleVideoQualityChange}
+                  >
+                    <option value="NoConversion">変換なし</option>
+                    <option value="1080p">1080p</option>
+                    <option value="720p">720p</option>
+                    <option value="480p">480p</option>
                   </select>
                 </div>
               </div>

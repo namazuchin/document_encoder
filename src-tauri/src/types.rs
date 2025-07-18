@@ -1,5 +1,16 @@
 use serde::{Deserialize, Serialize};
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum VideoQuality {
+    NoConversion,
+    #[serde(rename = "1080p")]
+    Quality1080p,
+    #[serde(rename = "720p")]
+    Quality720p,
+    #[serde(rename = "480p")]
+    Quality480p,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoFile {
     pub path: String,
@@ -20,6 +31,8 @@ pub struct AppSettings {
     pub gemini_model: String,
     #[serde(default)]
     pub embed_images: bool,
+    #[serde(default = "default_video_quality")]
+    pub video_quality: VideoQuality,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -39,6 +52,10 @@ pub fn default_temperature() -> f64 {
 
 pub fn default_gemini_model() -> String {
     "gemini-2.5-pro".to_string()
+}
+
+pub fn default_video_quality() -> VideoQuality {
+    VideoQuality::NoConversion
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

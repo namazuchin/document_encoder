@@ -24,6 +24,7 @@ use crate::file::{
 };
 use crate::video::{
     split_video_if_needed,
+    encode_video_if_needed,
 };
 
 
@@ -45,7 +46,7 @@ async fn generate_document(
     );
 
     // Calculate total steps for progress tracking
-    let total_steps = files.len() * 3 + if files.len() > 1 { 1 } else { 0 }; // Split, Upload, Generate per file + Integration
+    let total_steps = files.len() * 4 + if files.len() > 1 { 1 } else { 0 }; // Split, Encode, Upload, Generate per file + Integration
     let mut current_step = 0;
 
     // Helper function to emit progress
@@ -74,7 +75,7 @@ async fn generate_document(
     );
 
     // Process files and split if necessary
-    let mut processed_files = Vec::new();
+    let mut split_files = Vec::new();
 
     for (index, file) in files.iter().enumerate() {
         current_step += 1;
@@ -83,7 +84,7 @@ async fn generate_document(
             current_step,
             total_steps,
             format!(
-                "ファイル処理中 ({}/{}): {}",
+                "ファイル分割処理中 ({}/{}): {}",
                 index + 1,
                 files.len(),
                 file.name
@@ -101,16 +102,78 @@ async fn generate_document(
                 if segments.len() > 1 {
                     println!("✂️ [BACKEND] Video split into {} segments", segments.len());
                     for segment in segments {
-                        processed_files.push(segment);
+                        split_files.push(segment);
                     }
                 } else {
                     println!("✅ [BACKEND] Video is under 1 hour, no splitting needed");
-                    processed_files.push(PathBuf::from(&file.path));
+                    split_files.push(PathBuf::from(&file.path));
                 }
             }
             Err(e) => {
                 println!("❌ [BACKEND] Failed to process file {}: {}", file.name, e);
                 return Err(format!("Failed to process file {}: {}", file.name, e));
+            }
+        }
+    }
+
+    // Encode videos if needed
+    let mut processed_files = Vec::new();
+    let output_dir = Path::new(&save_directory);
+
+    for (index, file_path) in split_files.iter().enumerate() {
+        current_step += 1;
+        let file_name = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("不明なファイル");
+        
+        emit_progress(
+            &app,
+            current_step,
+            total_steps,
+            format!(
+                "動画品質処理中 ({}/{}): {}",
+                index + 1,
+                split_files.len(),
+                file_name
+            ),
+        );
+
+        println!(
+            "🎞️ [BACKEND] Encoding video {}/{}: {}",
+            index + 1,
+            split_files.len(),
+            file_path.display()
+        );
+
+        // Create progress callback for encoding
+        let app_clone = app.clone();
+        let progress_callback = move |message: String| {
+            let progress = ProgressUpdate {
+                message,
+                step: current_step,
+                total_steps,
+            };
+            if let Err(e) = app_clone.emit("progress_update", &progress) {
+                println!("❌ [EVENT] Failed to emit encoding progress: {}", e);
+            }
+        };
+
+        match encode_video_if_needed(
+            &file_path.to_string_lossy(),
+            &settings.video_quality,
+            output_dir,
+            progress_callback,
+        )
+        .await
+        {
+            Ok(encoded_path) => {
+                println!("✅ [BACKEND] Video processing completed: {:?}", encoded_path);
+                processed_files.push(encoded_path);
+            }
+            Err(e) => {
+                println!("❌ [BACKEND] Failed to encode video {}: {}", file_path.display(), e);
+                return Err(format!("Failed to encode video {}: {}", file_path.display(), e));
             }
         }
     }
@@ -334,6 +397,7 @@ async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(
         custom_prompt: settings.custom_prompt,
         gemini_model: settings.gemini_model,
         embed_images: settings.embed_images,
+        video_quality: settings.video_quality,
     };
 
     let config_json = serde_json::to_string_pretty(&safe_settings)
