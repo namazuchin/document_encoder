@@ -372,6 +372,12 @@
   padding-left: 10px;
 }
 
+.image-embed-controls {
+  display: flex;
+  align-items: center;
+  gap: 20px;
+}
+
 /* より具体的なセレクタで強制適用 */
 .prompt-section .prompt-controls .setting-group label {
   color: #555 !important;
