@@ -14,6 +14,7 @@ export interface AppSettings {
   gemini_model?: string;
   embed_images?: boolean;
   video_quality?: VideoQuality;
+  hardware_encoding?: boolean;
 }
 
 export interface PromptPreset {

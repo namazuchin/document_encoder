@@ -101,7 +101,7 @@ export default function MainDashboard({
         <h1>Document Encoder</h1>
         <div className="header-buttons">
           <button className="settings-btn" onClick={onShowSettings}>
-            <FaCog className="icon" /> API設定
+            <FaCog className="icon" /> 設定
           </button>
           <button className="settings-btn" onClick={onShowPromptSettings}>
             <FaEdit className="icon" /> プロンプト設定

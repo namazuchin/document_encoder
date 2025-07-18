@@ -5,7 +5,7 @@ import "./App.css";
 import { VideoFile, AppSettings, PromptPreset, ProgressUpdate } from './types';
 import { generateFilename, getDirectoryFromPath } from './utils/fileUtils';
 import { useLogger } from './hooks/useLogger';
-import ApiSettings from './components/ApiSettings';
+import Settings from './components/Settings';
 import PromptSettings from './components/PromptSettings';
 import PresetEditModal from './components/PresetEditModal';
 import MainDashboard from './components/MainDashboard';
@@ -366,7 +366,7 @@ function App() {
 
   if (showSettings) {
     return (
-      <ApiSettings
+      <Settings
         settings={settings}
         onUpdateSettings={setSettings}
         onClose={() => setShowSettings(false)}

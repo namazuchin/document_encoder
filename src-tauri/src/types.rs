@@ -33,6 +33,8 @@ pub struct AppSettings {
     pub embed_images: bool,
     #[serde(default = "default_video_quality")]
     pub video_quality: VideoQuality,
+    #[serde(default)]
+    pub hardware_encoding: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

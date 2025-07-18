@@ -164,6 +164,7 @@ async fn generate_document(
             &settings.video_quality,
             output_dir,
             progress_callback,
+            settings.hardware_encoding,
         )
         .await
         {
@@ -398,6 +399,7 @@ async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(
         gemini_model: settings.gemini_model,
         embed_images: settings.embed_images,
         video_quality: settings.video_quality,
+        hardware_encoding: settings.hardware_encoding,
     };
 
     let config_json = serde_json::to_string_pretty(&safe_settings)

@@ -223,6 +223,7 @@ pub async fn encode_video_if_needed<F>(
     target_quality: &VideoQuality,
     output_dir: &Path,
     progress_callback: F,
+    hardware_encoding: bool,
 ) -> Result<PathBuf>
 where
     F: Fn(String),
@@ -273,17 +274,50 @@ where
     // Get video duration for progress calculation
     let duration = get_video_duration(video_path).await?;
     
+    // Choose video encoder based on hardware encoding setting
+    let video_encoder = if hardware_encoding {
+        match get_best_hardware_encoder().await {
+            Some(encoder) => {
+                debug!("Using hardware encoder: {}", encoder);
+                progress_callback("ハードウェアエンコーダーを使用します...".to_string());
+                encoder
+            }
+            None => {
+                debug!("Hardware encoding requested but no hardware encoder available, falling back to software");
+                progress_callback("ハードウェアエンコーダーが利用できません。ソフトウェアエンコーダーを使用します...".to_string());
+                "libx264".to_string()
+            }
+        }
+    } else {
+        debug!("Using software encoder: libx264");
+        "libx264".to_string()
+    };
+    
+    // Build ffmpeg command arguments
+    let scale_filter = format!("scale={}:{}", target_width, target_height);
+    let mut args = vec![
+        "-i", video_path,
+        "-vf", &scale_filter,
+        "-c:v", &video_encoder,
+        "-c:a", "aac",
+        "-progress", "pipe:1",
+        "-y",
+        output_path.to_str().unwrap(),
+    ];
+    
+    // Add quality settings based on encoder type
+    if video_encoder == "libx264" {
+        // Software encoding quality settings
+        args.insert(args.len() - 3, "-crf");
+        args.insert(args.len() - 3, "23");
+    } else {
+        // Hardware encoding quality settings
+        args.insert(args.len() - 3, "-b:v");
+        args.insert(args.len() - 3, "5M"); // 5 Mbps bitrate for hardware encoding
+    }
+    
     let mut command = Command::new(&ffmpeg_path)
-        .args([
-            "-i", video_path,
-            "-vf", &format!("scale={}:{}", target_width, target_height),
-            "-c:v", "libx264",
-            "-crf", "23",
-            "-c:a", "aac",
-            "-progress", "pipe:1",
-            "-y",
-            output_path.to_str().unwrap(),
-        ])
+        .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
@@ -326,4 +360,96 @@ fn target_quality_string(quality: &VideoQuality) -> &str {
         VideoQuality::Quality480p => "480p",
         VideoQuality::NoConversion => "original",
     }
+}
+
+/// Detects available hardware encoders on the system
+pub async fn detect_hardware_encoders() -> Result<Vec<String>> {
+    debug!("Detecting available hardware encoders");
+    
+    let ffmpeg_path = find_executable("ffmpeg")?;
+    
+    // Get list of available encoders
+    let output = Command::new(&ffmpeg_path)
+        .args(["-encoders"])
+        .output()?;
+    
+    if !output.status.success() {
+        return Err(anyhow!("Failed to get encoder list from ffmpeg"));
+    }
+    
+    let encoder_list = String::from_utf8(output.stdout)?;
+    let mut available_encoders = Vec::new();
+    
+    // Check for common hardware encoders
+    let hardware_encoders = vec![
+        ("h264_videotoolbox", "Apple VideoToolbox H.264"),
+        ("h264_nvenc", "NVIDIA NVENC H.264"),
+        ("h264_qsv", "Intel Quick Sync H.264"),
+        ("h264_amf", "AMD AMF H.264"),
+        ("h264_vaapi", "VAAPI H.264"),
+        ("h264_v4l2m2m", "V4L2 Memory-to-Memory H.264"),
+    ];
+    
+    for (encoder_name, display_name) in hardware_encoders {
+        if encoder_list.contains(encoder_name) {
+            debug!("Found hardware encoder: {}", display_name);
+            available_encoders.push(display_name.to_string());
+        }
+    }
+    
+    debug!("Available hardware encoders: {:?}", available_encoders);
+    Ok(available_encoders)
+}
+
+/// Checks if hardware encoding is available on the system
+pub async fn is_hardware_encoding_available() -> bool {
+    match detect_hardware_encoders().await {
+        Ok(encoders) => !encoders.is_empty(),
+        Err(e) => {
+            debug!("Error detecting hardware encoders: {}", e);
+            false
+        }
+    }
+}
+
+/// Gets the best available hardware encoder for the current system
+pub async fn get_best_hardware_encoder() -> Option<String> {
+    let ffmpeg_path = match find_executable("ffmpeg") {
+        Ok(path) => path,
+        Err(_) => return None,
+    };
+    
+    // Get list of available encoders
+    let output = match Command::new(&ffmpeg_path)
+        .args(["-encoders"])
+        .output()
+    {
+        Ok(output) => output,
+        Err(_) => return None,
+    };
+    
+    if !output.status.success() {
+        return None;
+    }
+    
+    let encoder_list = String::from_utf8(output.stdout).ok()?;
+    
+    // Priority order of hardware encoders (best first)
+    let encoder_priority = vec![
+        "h264_videotoolbox", // Apple VideoToolbox (macOS)
+        "h264_nvenc",        // NVIDIA NVENC
+        "h264_qsv",          // Intel Quick Sync
+        "h264_amf",          // AMD AMF
+        "h264_vaapi",        // VAAPI
+        "h264_v4l2m2m",      // V4L2 Memory-to-Memory
+    ];
+    
+    for encoder in encoder_priority {
+        if encoder_list.contains(encoder) {
+            debug!("Selected hardware encoder: {}", encoder);
+            return Some(encoder.to_string());
+        }
+    }
+    
+    None
 }
