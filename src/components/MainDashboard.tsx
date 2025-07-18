@@ -179,33 +179,36 @@ export default function MainDashboard({
                   </select>
                 </div>
                 <div className="setting-group">
-                  <div className="checkbox-group">
-                    <label className="checkbox-label" htmlFor="embedImages">
-                      <input
-                        type="checkbox"
-                        id="embedImages"
-                        checked={settings.embed_images || false}
-                        onChange={handleEmbedImagesChange}
-                      />
-                      <span className="checkbox-text">
-                        <FaImage className="icon" /> 画像を埋め込む
-                      </span>
-                    </label>
-                  </div>
-                  {settings.embed_images && (
-                    <div className="frequency-setting">
-                      <label htmlFor="imageEmbedFrequency">頻度:</label>
-                      <select
-                        id="imageEmbedFrequency"
-                        value={settings.image_embed_frequency || 'moderate'}
-                        onChange={handleImageEmbedFrequencyChange}
-                      >
-                        <option value="minimal">最小限</option>
-                        <option value="moderate">適度</option>
-                        <option value="detailed">詳細</option>
-                      </select>
+                  <div className="image-embed-group">
+                    <h4><FaImage className="icon" /> 画像埋め込み設定</h4>
+                    <div className="checkbox-group">
+                      <label className="checkbox-label" htmlFor="embedImages">
+                        <input
+                          type="checkbox"
+                          id="embedImages"
+                          checked={settings.embed_images || false}
+                          onChange={handleEmbedImagesChange}
+                        />
+                        <span className="checkbox-text">
+                          画像を埋め込む
+                        </span>
+                      </label>
                     </div>
-                  )}
+                    {settings.embed_images && (
+                      <div className="frequency-setting">
+                        <label htmlFor="imageEmbedFrequency">頻度:</label>
+                        <select
+                          id="imageEmbedFrequency"
+                          value={settings.image_embed_frequency || 'moderate'}
+                          onChange={handleImageEmbedFrequencyChange}
+                        >
+                          <option value="minimal">最小限</option>
+                          <option value="moderate">適度</option>
+                          <option value="detailed">詳細</option>
+                        </select>
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="prompt-editor">
