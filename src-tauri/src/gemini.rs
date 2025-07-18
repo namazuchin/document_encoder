@@ -336,7 +336,7 @@ where
     let prompt = if let Some(custom) = custom_prompt {
         let mut final_prompt = custom.to_string();
         if embed_images {
-            final_prompt.push_str("\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX.XXs] where XX.XXs is the timestamp in seconds (e.g., [Screenshot: 123.45s]). Use these references to mark key moments that would benefit from visual representation.");
+            final_prompt.push_str("\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX:XXs] where XX:XX is the timestamp in MM:SS format (e.g., [Screenshot: 00:14s], [Screenshot: 01:23s]). Use these references to mark key moments that would benefit from visual representation.");
         }
         final_prompt
     } else {
@@ -356,7 +356,7 @@ where
         {} and format it in a clear, professional manner.", language_instruction);
         
         if embed_images {
-            base_prompt.push_str("\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX.XXs] where XX.XXs is the timestamp in seconds (e.g., [Screenshot: 123.45s]). Use these references to mark key moments that would benefit from visual representation.");
+            base_prompt.push_str("\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX:XXs] where XX:XX is the timestamp in MM:SS format (e.g., [Screenshot: 00:14s], [Screenshot: 01:23s]). Use these references to mark key moments that would benefit from visual representation.");
         }
         
         base_prompt
@@ -519,6 +519,23 @@ pub fn get_mime_type(file_path: &str) -> String {
     .to_string()
 }
 
+/// Parses timestamp string in various formats (MM:SS or SS.SS)
+fn parse_timestamp(timestamp_str: &str) -> f64 {
+    if timestamp_str.contains(':') {
+        // Format: MM:SS or MM:SS.SS
+        let parts: Vec<&str> = timestamp_str.split(':').collect();
+        if parts.len() == 2 {
+            let minutes = parts[0].parse::<f64>().unwrap_or(0.0);
+            let seconds = parts[1].parse::<f64>().unwrap_or(0.0);
+            return minutes * 60.0 + seconds;
+        }
+    } else {
+        // Format: SS.SS
+        return timestamp_str.parse::<f64>().unwrap_or(0.0);
+    }
+    0.0
+}
+
 /// Processes the generated document to extract screenshot placeholders and replace them with images
 pub async fn process_document_with_images(
     document: &str,
@@ -532,7 +549,8 @@ pub async fn process_document_with_images(
     }
 
     // Extract screenshot placeholders using regex
-    let re = Regex::new(r"\[Screenshot:\s*(\d+(?:\.\d+)?)\s*s\]").unwrap();
+    // Updated to handle formats like [Screenshot: 00:14s] and [Screenshot: 123.45s]
+    let re = Regex::new(r"\[Screenshot:\s*(\d{1,2}:\d{2}(?:\.\d+)?|\d+(?:\.\d+)?)\s*s\]").unwrap();
     let mut processed_document = document.to_string();
     let mut image_counter = 1;
 
@@ -541,7 +559,8 @@ pub async fn process_document_with_images(
         .captures_iter(document)
         .map(|caps| {
             let full_match = caps[0].to_string();
-            let timestamp = caps[1].parse::<f64>().unwrap_or(0.0);
+            let timestamp_str = &caps[1];
+            let timestamp = parse_timestamp(timestamp_str);
             (full_match, timestamp)
         })
         .collect();

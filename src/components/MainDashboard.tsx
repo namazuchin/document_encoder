@@ -1,4 +1,4 @@
-import React, { useRef } from 'react';
+import React, { useRef, useEffect, useState } from 'react';
 import { VideoFile, AppSettings, PromptPreset, VideoQuality } from '../types';
 import { 
   FaPlay, 
@@ -71,6 +71,23 @@ export default function MainDashboard({
   generateFilename
 }: MainDashboardProps) {
   const logContainerRef = useRef<HTMLDivElement>(null);
+  const [isAutoScroll, setIsAutoScroll] = useState(true);
+
+  // 自動スクロール機能
+  useEffect(() => {
+    if (isAutoScroll && logContainerRef.current) {
+      logContainerRef.current.scrollTop = logContainerRef.current.scrollHeight;
+    }
+  }, [logs, isAutoScroll]);
+
+  // スクロールイベントのハンドラー
+  const handleScroll = () => {
+    if (logContainerRef.current) {
+      const { scrollTop, scrollHeight, clientHeight } = logContainerRef.current;
+      const isAtBottom = scrollTop + clientHeight >= scrollHeight - 50; // 50px余裕を持たせる
+      setIsAutoScroll(isAtBottom);
+    }
+  };
 
   const formatFileSize = (bytes: number): string => {
     if (bytes === 0) return "0 B";
@@ -266,7 +283,11 @@ export default function MainDashboard({
                   )}
                 </div>
               </div>
-              <div className="log-container" ref={logContainerRef}>
+              <div 
+                className="log-container" 
+                ref={logContainerRef}
+                onScroll={handleScroll}
+              >
                 {logs.map((log, index) => (
                   <div key={index} className="log-entry">
                     {log}
