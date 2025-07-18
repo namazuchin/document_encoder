@@ -11,6 +11,16 @@ pub enum VideoQuality {
     Quality480p,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum ImageEmbedFrequency {
+    #[serde(rename = "minimal")]
+    Minimal,    // 最小限（重要なポイントのみ）
+    #[serde(rename = "moderate")]
+    Moderate,   // 適度（通常）
+    #[serde(rename = "detailed")]
+    Detailed,   // 詳細（多め）
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VideoFile {
     pub path: String,
@@ -31,6 +41,8 @@ pub struct AppSettings {
     pub gemini_model: String,
     #[serde(default)]
     pub embed_images: bool,
+    #[serde(default = "default_image_embed_frequency")]
+    pub image_embed_frequency: ImageEmbedFrequency,
     #[serde(default = "default_video_quality")]
     pub video_quality: VideoQuality,
     #[serde(default)]
@@ -58,6 +70,10 @@ pub fn default_gemini_model() -> String {
 
 pub fn default_video_quality() -> VideoQuality {
     VideoQuality::NoConversion
+}
+
+pub fn default_image_embed_frequency() -> ImageEmbedFrequency {
+    ImageEmbedFrequency::Moderate
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

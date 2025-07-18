@@ -16,7 +16,8 @@ function App() {
     gemini_api_key: "",
     language: "japanese",
     temperature: 0,
-    gemini_model: "gemini-2.5-pro"
+    gemini_model: "gemini-2.5-pro",
+    image_embed_frequency: "moderate"
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [generatedDocument, setGeneratedDocument] = useState("");

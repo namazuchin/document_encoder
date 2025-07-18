@@ -8,7 +8,7 @@ use tokio::time::{sleep, Duration};
 
 use crate::types::{
     GeminiRequest, GeminiContent, GeminiPart, GeminiFileData, GeminiResponse,
-    GeminiUploadResponse, GeminiGenerationConfig, ProgressUpdate
+    GeminiUploadResponse, GeminiGenerationConfig, ProgressUpdate, ImageEmbedFrequency
 };
 
 // Internal GeminiFileInfo for status polling (with optional fields)
@@ -293,6 +293,7 @@ pub async fn generate_with_gemini_with_progress(
     custom_prompt: Option<&str>,
     model: &str,
     embed_images: bool,
+    image_embed_frequency: &ImageEmbedFrequency,
     app: &tauri::AppHandle,
     base_step: usize,
     total_steps: usize,
@@ -308,7 +309,7 @@ pub async fn generate_with_gemini_with_progress(
         }
     };
 
-    generate_with_gemini_internal(file_uris, language, api_key, temperature, custom_prompt, model, embed_images, emit_progress).await
+    generate_with_gemini_internal(file_uris, language, api_key, temperature, custom_prompt, model, embed_images, image_embed_frequency, emit_progress).await
 }
 
 pub async fn generate_with_gemini_internal<F>(
@@ -319,6 +320,7 @@ pub async fn generate_with_gemini_internal<F>(
     custom_prompt: Option<&str>,
     model: &str,
     embed_images: bool,
+    image_embed_frequency: &ImageEmbedFrequency,
     emit_progress: F,
 ) -> Result<String>
 where
@@ -336,7 +338,8 @@ where
     let prompt = if let Some(custom) = custom_prompt {
         let mut final_prompt = custom.to_string();
         if embed_images {
-            final_prompt.push_str("\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX:XXs] where XX:XX is the timestamp in MM:SS format (e.g., [Screenshot: 00:14s], [Screenshot: 01:23s]). Use these references to mark key moments that would benefit from visual representation.");
+            let image_instruction = get_image_instruction(image_embed_frequency);
+            final_prompt.push_str(&image_instruction);
         }
         final_prompt
     } else {
@@ -356,7 +359,8 @@ where
         {} and format it in a clear, professional manner.", language_instruction);
         
         if embed_images {
-            base_prompt.push_str("\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX:XXs] where XX:XX is the timestamp in MM:SS format (e.g., [Screenshot: 00:14s], [Screenshot: 01:23s]). Use these references to mark key moments that would benefit from visual representation.");
+            let image_instruction = get_image_instruction(image_embed_frequency);
+            base_prompt.push_str(&image_instruction);
         }
         
         base_prompt
@@ -519,6 +523,21 @@ pub fn get_mime_type(file_path: &str) -> String {
     .to_string()
 }
 
+/// Generates image instruction based on embedding frequency
+fn get_image_instruction(frequency: &ImageEmbedFrequency) -> String {
+    match frequency {
+        ImageEmbedFrequency::Minimal => {
+            "\n\nIMPORTANT: When describing the most critical visual elements or key points in the document, please include screenshot references using this exact format: [Screenshot: XX:XXs] where XX:XX is the timestamp in MM:SS format (e.g., [Screenshot: 00:14s], [Screenshot: 01:23s]). Use these references sparingly, only for the most important moments that are essential for understanding.".to_string()
+        },
+        ImageEmbedFrequency::Moderate => {
+            "\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX:XXs] where XX:XX is the timestamp in MM:SS format (e.g., [Screenshot: 00:14s], [Screenshot: 01:23s]). Use these references to mark key moments that would benefit from visual representation.".to_string()
+        },
+        ImageEmbedFrequency::Detailed => {
+            "\n\nIMPORTANT: When describing visual elements, UI components, or detailed explanations in the document, please include screenshot references using this exact format: [Screenshot: XX:XXs] where XX:XX is the timestamp in MM:SS format (e.g., [Screenshot: 00:14s], [Screenshot: 01:23s]). Use these references frequently to provide detailed visual context for readers.".to_string()
+        }
+    }
+}
+
 /// Parses timestamp string in various formats (MM:SS or SS.SS)
 fn parse_timestamp(timestamp_str: &str) -> f64 {
     if timestamp_str.contains(':') {
@@ -541,6 +560,7 @@ pub async fn process_document_with_images(
     document: &str,
     video_files: &[String],
     output_directory: &str,
+    _image_embed_frequency: &ImageEmbedFrequency,
 ) -> Result<String> {
     // Create images directory
     let images_dir = Path::new(output_directory).join("images");
@@ -564,6 +584,8 @@ pub async fn process_document_with_images(
             (full_match, timestamp)
         })
         .collect();
+    
+    println!("📊 [IMAGE] Found {} screenshot references to process", matches.len());
 
     // Get video durations to help determine which video contains the timestamp
     let mut video_durations = Vec::new();

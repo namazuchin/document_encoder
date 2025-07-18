@@ -260,6 +260,7 @@ async fn generate_document(
             settings.custom_prompt.as_deref(),
             &settings.gemini_model,
             settings.embed_images,
+            &settings.image_embed_frequency,
             &app,
             current_step,
             total_steps,
@@ -344,7 +345,7 @@ async fn generate_document(
         // For image processing, use the user-specified save directory
         let output_dir = save_directory.clone();
         
-        match process_document_with_images(&final_document, &video_paths, &output_dir).await {
+        match process_document_with_images(&final_document, &video_paths, &output_dir, &settings.image_embed_frequency).await {
             Ok(processed_doc) => {
                 println!("✅ [BACKEND] Successfully processed document with images");
                 processed_doc
@@ -398,6 +399,7 @@ async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(
         custom_prompt: settings.custom_prompt,
         gemini_model: settings.gemini_model,
         embed_images: settings.embed_images,
+        image_embed_frequency: settings.image_embed_frequency,
         video_quality: settings.video_quality,
         hardware_encoding: settings.hardware_encoding,
     };

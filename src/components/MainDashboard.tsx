@@ -1,5 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { VideoFile, AppSettings, PromptPreset, VideoQuality } from '../types';
+import { VideoFile, AppSettings, PromptPreset, VideoQuality, ImageEmbedFrequency } from '../types';
 import { 
   FaPlay, 
   FaCog, 
@@ -107,6 +107,11 @@ export default function MainDashboard({
     onUpdateSettings(newSettings);
   };
 
+  const handleImageEmbedFrequencyChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const newSettings = { ...settings, image_embed_frequency: e.target.value as ImageEmbedFrequency };
+    onUpdateSettings(newSettings);
+  };
+
   const handleVideoQualityChange = async (e: React.ChangeEvent<HTMLSelectElement>) => {
     const newSettings = { ...settings, video_quality: e.target.value as VideoQuality };
     onUpdateSettings(newSettings);
@@ -127,10 +132,14 @@ export default function MainDashboard({
       </header>
 
       <div className="main-content">
+        {/* 左側ペイン: 設定・操作 */}
         <div className="left-panel">
-          <div className="prompt-section">
-            <h2>プロンプト設定</h2>
-            <div className="prompt-controls">
+          <div className="settings-panel">
+            <h2>設定</h2>
+            
+            {/* プロンプト設定 */}
+            <div className="setting-section">
+              <h3>プロンプト設定</h3>
               <div className="settings-grid">
                 <div className="setting-group">
                   <label htmlFor="presetSelect">プリセット選択:</label>
@@ -146,7 +155,7 @@ export default function MainDashboard({
                   </select>
                 </div>
                 <div className="setting-group">
-                  <label htmlFor="language"><FaLanguage className="icon" /> ドキュメント出力言語:</label>
+                  <label htmlFor="language"><FaLanguage className="icon" /> 出力言語:</label>
                   <select 
                     id="language"
                     value={settings.language}
@@ -169,19 +178,35 @@ export default function MainDashboard({
                     <option value="480p">480p</option>
                   </select>
                 </div>
-              </div>
-              <div className="checkbox-group">
-                <label className="checkbox-label" htmlFor="embedImages">
-                  <input
-                    type="checkbox"
-                    id="embedImages"
-                    checked={settings.embed_images || false}
-                    onChange={handleEmbedImagesChange}
-                  />
-                  <span className="checkbox-text">
-                    <FaImage className="icon" /> ドキュメントに画像を埋め込む
-                  </span>
-                </label>
+                <div className="setting-group">
+                  <div className="checkbox-group">
+                    <label className="checkbox-label" htmlFor="embedImages">
+                      <input
+                        type="checkbox"
+                        id="embedImages"
+                        checked={settings.embed_images || false}
+                        onChange={handleEmbedImagesChange}
+                      />
+                      <span className="checkbox-text">
+                        <FaImage className="icon" /> 画像を埋め込む
+                      </span>
+                    </label>
+                  </div>
+                  {settings.embed_images && (
+                    <div className="frequency-setting">
+                      <label htmlFor="imageEmbedFrequency">頻度:</label>
+                      <select
+                        id="imageEmbedFrequency"
+                        value={settings.image_embed_frequency || 'moderate'}
+                        onChange={handleImageEmbedFrequencyChange}
+                      >
+                        <option value="minimal">最小限</option>
+                        <option value="moderate">適度</option>
+                        <option value="detailed">詳細</option>
+                      </select>
+                    </div>
+                  )}
+                </div>
               </div>
               <div className="prompt-editor">
                 <label htmlFor="promptText">現在のプロンプト:</label>
@@ -190,64 +215,71 @@ export default function MainDashboard({
                   value={currentPrompt}
                   onChange={(e) => onPromptChange(e.target.value)}
                   placeholder="プロンプトを入力してください..."
-                  rows={4}
+                  rows={3}
                 />
               </div>
             </div>
-          </div>
 
-          <div className="file-selection">
-            <h2>動画ファイル選択</h2>
-            <button className="file-select-btn" onClick={onFileSelect}>
-              <FaFileVideo className="icon" /> ファイルを選択
-            </button>
-            
-            {selectedFiles.length > 0 && (
-              <div className="file-list">
-                <h3>選択されたファイル ({selectedFiles.length}件)</h3>
-                <div className="file-list-container">
-                  {selectedFiles.map((file, index) => (
-                    <div key={index} className="file-item">
-                      <span className="file-name">{file.name}</span>
-                      <span className="file-size">({formatFileSize(file.size)})</span>
-                      <button 
-                        className="remove-btn"
-                        onClick={() => onRemoveFile(index)}
-                      >
-                        <FaTimes className="icon" /> 削除
-                      </button>
-                    </div>
-                  ))}
+            {/* ファイル選択 */}
+            <div className="setting-section">
+              <h3>動画ファイル選択</h3>
+              <button className="file-select-btn" onClick={onFileSelect}>
+                <FaFileVideo className="icon" /> ファイルを選択
+              </button>
+              
+              {selectedFiles.length > 0 && (
+                <div className="file-list">
+                  <div className="file-count">選択されたファイル: {selectedFiles.length}件</div>
+                  <div className="file-list-container">
+                    {selectedFiles.map((file, index) => (
+                      <div key={index} className="file-item">
+                        <span className="file-name">{file.name}</span>
+                        <span className="file-size">({formatFileSize(file.size)})</span>
+                        <button 
+                          className="remove-btn"
+                          onClick={() => onRemoveFile(index)}
+                        >
+                          <FaTimes className="icon" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* 保存設定 */}
+            <div className="setting-section">
+              <h3>保存設定</h3>
+              <button className="directory-select-btn" onClick={onSelectSaveDirectory}>
+                <FaFolder className="icon" /> 保存先を変更
+              </button>
+              <div className="save-info">
+                <div className="directory-preview">
+                  保存先: {saveDirectory || "未選択"}
+                </div>
+                <div className="filename-preview">
+                  生成ファイル名: {selectedFiles.length > 0 ? generateFilename(selectedFiles) : "ファイルが選択されていません"}
                 </div>
               </div>
-            )}
-          </div>
+            </div>
 
-          <div className="save-directory-section">
-            <h2>保存設定</h2>
-            <button className="directory-select-btn" onClick={onSelectSaveDirectory}>
-              <FaFolder className="icon" /> 保存先を変更
-            </button>
-            <p className="directory-preview">
-              保存先: {saveDirectory || "未選択"}
-            </p>
-            <p className="filename-preview">
-              生成ファイル名: {selectedFiles.length > 0 ? generateFilename(selectedFiles) : "ファイルが選択されていません"}
-            </p>
-          </div>
-
-          <div className="generate-section">
-            <button 
-              className="generate-btn"
-              onClick={onGenerateDocument}
-              disabled={isProcessing || selectedFiles.length === 0}
-            >
-              <FaPlay className="icon" /> {isProcessing ? "処理中..." : "ドキュメント生成"}
-            </button>
+            {/* ドキュメント生成 */}
+            <div className="setting-section">
+              <button 
+                className="generate-btn"
+                onClick={onGenerateDocument}
+                disabled={isProcessing || selectedFiles.length === 0}
+              >
+                <FaPlay className="icon" /> {isProcessing ? "処理中..." : "ドキュメント生成"}
+              </button>
+            </div>
           </div>
         </div>
 
+        {/* 右側ペイン: 処理状況・結果 */}
         <div className="right-panel">
+          {/* 処理状況 */}
           <div className="progress-section">
             <h2>処理状況</h2>
             <div className="progress-message">{progressMessage || "待機中..."}</div>
@@ -283,25 +315,28 @@ export default function MainDashboard({
                   )}
                 </div>
               </div>
-              <div 
-                className="log-container" 
-                ref={logContainerRef}
-                onScroll={handleScroll}
-              >
-                {logs.map((log, index) => (
-                  <div key={index} className="log-entry">
-                    {log}
-                  </div>
-                ))}
-                {logs.length === 0 && (
-                  <div className="log-entry log-empty">
-                    ログはまだありません
-                  </div>
-                )}
-              </div>
+              {showLogs && (
+                <div 
+                  className="log-container" 
+                  ref={logContainerRef}
+                  onScroll={handleScroll}
+                >
+                  {logs.map((log, index) => (
+                    <div key={index} className="log-entry">
+                      {log}
+                    </div>
+                  ))}
+                  {logs.length === 0 && (
+                    <div className="log-entry log-empty">
+                      ログはまだありません
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
+          {/* 生成結果 */}
           <div className="result-section">
             <h2>生成結果</h2>
             <div className="document-content">

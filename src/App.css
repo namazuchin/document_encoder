@@ -40,20 +40,33 @@
   flex: 1;
   gap: 20px;
   overflow: hidden;
+  /* 明示的な高さを指定 */
+  height: calc(100vh - 120px);
 }
 
 .left-panel {
-  flex: 1;
-  min-width: 500px;
+  flex: 0 0 50%;
+  min-width: 400px;
+  max-width: 600px;
   overflow-y: auto;
-  padding-right: 10px;
+  padding-right: 15px;
+  height: 100%;
+  /* 明示的な幅を指定 */
+  width: 50%;
+  /* スクロールバーを表示 */
+  overflow-y: scroll;
 }
 
 .right-panel {
   flex: 1;
-  min-width: 500px;
-  overflow-y: auto;
-  padding-left: 10px;
+  min-width: 400px;
+  padding-left: 15px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  /* 明示的な幅を指定 */
+  width: 50%;
 }
 
 .header h1 {
@@ -82,6 +95,42 @@
   gap: 10px;
 }
 
+/* 設定パネル全体 */
+.settings-panel {
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.settings-panel h2 {
+  margin: 0 0 20px 0;
+  padding: 20px 20px 0 20px;
+  color: #333;
+  font-size: 20px;
+  border-bottom: 1px solid #f0f0f0;
+  padding-bottom: 15px;
+}
+
+/* セクション区切り */
+.setting-section {
+  padding: 15px 20px;
+  border-bottom: 1px solid #f0f0f0;
+  margin-bottom: 0;
+}
+
+.setting-section:last-child {
+  border-bottom: none;
+}
+
+.setting-section h3 {
+  margin: 0 0 15px 0;
+  color: #555;
+  font-size: 16px;
+  font-weight: 600;
+}
+
+/* 古いクラス名の互換性 */
 .prompt-section {
   margin-bottom: 20px;
   padding: 15px;
@@ -99,14 +148,66 @@
 .prompt-controls {
   display: flex;
   flex-direction: column;
-  gap: 15px;
+  gap: 12px;
 }
 
 .settings-grid {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 20px;
+  gap: 15px;
   margin-bottom: 15px;
+  width: 100%;
+}
+
+/* 新しいコンパクトレイアウト */
+.setting-row {
+  display: flex;
+  gap: 15px;
+  align-items: flex-end;
+}
+
+.setting-row .setting-group {
+  flex: 1;
+}
+
+.setting-row .setting-group.full-width {
+  flex: 1;
+}
+
+.image-settings-group {
+  margin-top: 8px;
+}
+
+.checkbox-group.compact {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 8px 10px;
+  margin: 6px 0;
+  background: #f8f9fa;
+  border: 1px solid #e9ecef;
+  border-radius: 6px;
+}
+
+.frequency-setting {
+  margin-top: 8px;
+}
+
+.frequency-setting label {
+  display: block;
+  margin-bottom: 4px;
+  font-weight: 500;
+  color: #666;
+  font-size: 12px;
+}
+
+.frequency-setting select {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #ddd;
+  border-radius: 4px;
+  background: white;
+  font-size: 13px;
 }
 
 /* レスポンシブデザインの改善 */
@@ -116,20 +217,38 @@
     gap: 15px;
   }
   
-  .container {
-    padding: 10px;
+  .setting-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+  
+  .checkbox-group.compact {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
+  
+  .frequency-setting {
+    margin-top: 8px;
+    width: 100%;
+  }
+  
+  .frequency-setting select {
+    width: 100%;
   }
   
   .main-content {
     flex-direction: column;
-    gap: 15px;
   }
   
   .left-panel,
   .right-panel {
-    min-width: unset;
-    padding: 0;
+    flex: 1;
+    min-width: auto;
+    max-width: none;
+    height: auto;
   }
+}
   
   .header-buttons {
     flex-direction: column;
@@ -170,11 +289,12 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
 }
 
 .checkbox-group {
-  margin: 15px 0;
-  padding: 12px;
+  margin: 8px 0;
+  padding: 10px;
   background: #f8f9fa;
   border: 1px solid #e9ecef;
   border-radius: 6px;
@@ -263,6 +383,7 @@
   display: flex;
   flex-direction: column;
   gap: 8px;
+  margin-top: 10px;
 }
 
 .prompt-editor label {
@@ -514,6 +635,28 @@
   color: #333;
 }
 
+/* ファイル選択エリアのスタイル調整 */
+.file-count {
+  margin: 10px 0 8px 0;
+  font-weight: 500;
+  color: #666;
+  font-size: 14px;
+}
+
+.save-info {
+  margin-top: 10px;
+}
+
+.save-info .directory-preview,
+.save-info .filename-preview {
+  margin: 5px 0;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  font-size: 13px;
+  color: #666;
+}
+
 .file-select-btn {
   background: #007bff;
   color: white;
@@ -602,6 +745,7 @@
 
 .setting-group {
   flex: 1;
+  min-width: 0;
 }
 
 .setting-group label {
@@ -618,6 +762,7 @@
   border-radius: 4px;
   font-size: 14px;
   box-sizing: border-box;
+  min-width: 0;
 }
 
 .setting-group select:focus {
@@ -639,17 +784,19 @@
 }
 
 .progress-section {
-  padding: 15px;
-  background: #f8f9fa;
-  border: 1px solid #dee2e6;
-  border-radius: 4px;
-  height: fit-content;
+  margin-bottom: 20px;
+  padding: 20px;
+  background: white;
+  border-radius: 8px;
+  border: 1px solid #e0e0e0;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  flex-shrink: 0;
 }
 
 .progress-section h2 {
-  margin-top: 0;
-  margin-bottom: 15px;
+  margin: 0 0 15px 0;
   color: #333;
+  font-size: 18px;
 }
 
 .progress-message {
@@ -867,15 +1014,21 @@
 
 .result-section {
   margin-top: 20px;
-  padding: 15px;
+  padding: 20px;
   background: white;
   border: 1px solid #e0e0e0;
   border-radius: 8px;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
 }
 
 .result-section h2 {
-  margin-bottom: 15px;
+  margin: 0 0 15px 0;
   color: #333;
+  font-size: 18px;
 }
 
 .document-content {
@@ -883,8 +1036,9 @@
   border: 1px solid #dee2e6;
   border-radius: 4px;
   padding: 20px;
-  max-height: 500px;
+  flex: 1;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .document-content pre {
