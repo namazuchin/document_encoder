@@ -38,7 +38,7 @@
 .main-content {
   display: flex;
   flex: 1;
-  gap: 5px;
+  gap: 20px;
   overflow: hidden;
   /* 明示的な高さを指定 */
   height: calc(100vh - 120px);
@@ -49,7 +49,7 @@
   min-width: 400px;
   max-width: 600px;
   overflow-y: auto;
-  padding-right: 15px;
+  padding-right: 0;
   height: 100%;
   /* 明示的な幅を指定 */
   width: 50%;
@@ -60,7 +60,7 @@
 .right-panel {
   flex: 1;
   min-width: 400px;
-  padding-left: 15px;
+  padding-left: 0;
   height: 100%;
   display: flex;
   flex-direction: column;
