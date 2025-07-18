@@ -59,7 +59,7 @@ export default function Settings({ settings, onUpdateSettings, onClose, onSave }
                 <option value="gemini-2.5-pro-preview-06-05">gemini-2.5-pro-preview-06-05</option>
               </select>
               <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-                使用するGeminiモデルを選択してください、flashモデルでの生成精度は使い物にならない程度に低いので注意してください。
+                使用するGeminiモデルを選択してください、Proモデルを強くオススメします。
               </small>
             </div>
           </div>

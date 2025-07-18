@@ -166,7 +166,7 @@ export default function MainDashboard({
                   </select>
                 </div>
                 <div className="setting-group">
-                  <label htmlFor="videoQuality"><FaVideo className="icon" /> 動画画質:</label>
+                  <label htmlFor="videoQuality"><FaVideo className="icon" /> 動画低容量化:</label>
                   <select 
                     id="videoQuality"
                     value={settings.video_quality || "NoConversion"}
@@ -180,7 +180,7 @@ export default function MainDashboard({
                 </div>
               </div>
               <div className="image-embed-group">
-                <h4><FaImage className="icon" /> 画像埋め込み設定</h4>
+                <h4><FaImage className="icon" /> スクリーンショット埋め込み設定</h4>
                 <div className="image-embed-controls">
                   <div className="checkbox-group">
                     <label className="checkbox-label" htmlFor="embedImages">
@@ -191,21 +191,21 @@ export default function MainDashboard({
                         onChange={handleEmbedImagesChange}
                       />
                       <span className="checkbox-text">
-                        画像を埋め込む
+                        スクリーンショットを埋め込む
                       </span>
                     </label>
                   </div>
                   {settings.embed_images && (
                     <div className="frequency-setting">
-                      <label htmlFor="imageEmbedFrequency">頻度:</label>
+                      <label htmlFor="imageEmbedFrequency">埋込頻度:</label>
                       <select
                         id="imageEmbedFrequency"
                         value={settings.image_embed_frequency || 'moderate'}
                         onChange={handleImageEmbedFrequencyChange}
                       >
-                        <option value="minimal">最小限</option>
-                        <option value="moderate">適度</option>
-                        <option value="detailed">詳細</option>
+                        <option value="minimal">少なめ</option>
+                        <option value="moderate">普通</option>
+                        <option value="detailed">多め</option>
                       </select>
                     </div>
                   )}
