@@ -279,8 +279,16 @@ where
         match get_best_hardware_encoder().await {
             Some(encoder) => {
                 debug!("Using hardware encoder: {}", encoder);
-                progress_callback("ハードウェアエンコーダーを使用します...".to_string());
-                encoder
+                progress_callback(format!("ハードウェアエンコーダーを使用します: {}", encoder));
+                
+                // Test if hardware encoder is actually working
+                if let Err(e) = test_hardware_encoder(&encoder).await {
+                    debug!("Hardware encoder test failed: {}, falling back to software encoder", e);
+                    progress_callback("ハードウェアエンコーダーのテストに失敗しました。ソフトウェアエンコーダーを使用します...".to_string());
+                    "libx264".to_string()
+                } else {
+                    encoder
+                }
             }
             None => {
                 debug!("Hardware encoding requested but no hardware encoder available, falling back to software");
@@ -300,27 +308,50 @@ where
         "-vf", &scale_filter,
         "-c:v", &video_encoder,
         "-c:a", "aac",
-        "-progress", "pipe:1",
-        "-y",
-        output_path.to_str().unwrap(),
     ];
     
     // Add quality settings based on encoder type
     if video_encoder == "libx264" {
         // Software encoding quality settings
-        args.insert(args.len() - 3, "-crf");
-        args.insert(args.len() - 3, "23");
+        args.extend_from_slice(&["-crf", "23"]);
     } else {
         // Hardware encoding quality settings
-        args.insert(args.len() - 3, "-b:v");
-        args.insert(args.len() - 3, "5M"); // 5 Mbps bitrate for hardware encoding
+        args.extend_from_slice(&["-b:v", "5M"]); // 5 Mbps bitrate for hardware encoding
     }
     
+    // Add progress and output settings
+    args.extend_from_slice(&[
+        "-progress", "pipe:1",
+        "-y",
+        output_path.to_str().unwrap(),
+    ]);
+    
+    debug!("Executing ffmpeg command: {:?} {:?}", ffmpeg_path, args);
     let mut command = Command::new(&ffmpeg_path)
         .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()?;
+    
+    // Monitor progress and capture stderr
+    let mut stderr_output = String::new();
+    
+    // Read stderr in a separate thread to capture error messages
+    let stderr_handle = if let Some(stderr) = command.stderr.take() {
+        let stderr_reader = BufReader::new(stderr);
+        Some(std::thread::spawn(move || {
+            let mut errors = String::new();
+            for line in stderr_reader.lines() {
+                if let Ok(line) = line {
+                    errors.push_str(&line);
+                    errors.push('\n');
+                }
+            }
+            errors
+        }))
+    } else {
+        None
+    };
     
     // Monitor progress
     if let Some(stdout) = command.stdout.take() {
@@ -343,8 +374,16 @@ where
     
     let status = command.wait()?;
     
+    // Get stderr output from the background thread
+    if let Some(handle) = stderr_handle {
+        if let Ok(errors) = handle.join() {
+            stderr_output = errors;
+        }
+    }
+    
     if !status.success() {
-        return Err(anyhow!("Video encoding failed"));
+        debug!("ffmpeg stderr: {}", stderr_output);
+        return Err(anyhow!("Video encoding failed: {}", stderr_output));
     }
     
     progress_callback("エンコードが完了しました".to_string());
@@ -410,6 +449,34 @@ pub async fn is_hardware_encoding_available() -> bool {
             false
         }
     }
+}
+
+/// Tests if a hardware encoder is actually working
+async fn test_hardware_encoder(encoder: &str) -> Result<()> {
+    debug!("Testing hardware encoder: {}", encoder);
+    
+    let ffmpeg_path = find_executable("ffmpeg")?;
+    
+    // Create a simple test: generate a small test video and try to encode it
+    let output = Command::new(&ffmpeg_path)
+        .args([
+            "-f", "lavfi",
+            "-i", "testsrc=duration=1:size=320x240:rate=30",
+            "-c:v", encoder,
+            "-t", "1",
+            "-f", "null",
+            "-",
+        ])
+        .output()?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        debug!("Hardware encoder test failed: {}", stderr);
+        return Err(anyhow!("Hardware encoder test failed: {}", stderr));
+    }
+    
+    debug!("Hardware encoder test passed for: {}", encoder);
+    Ok(())
 }
 
 /// Gets the best available hardware encoder for the current system
