@@ -9,6 +9,9 @@ import Settings from './components/Settings';
 import PromptSettings from './components/PromptSettings';
 import PresetEditModal from './components/PresetEditModal';
 import MainDashboard from './components/MainDashboard';
+import LicenseDisplay from './components/LicenseDisplay';
+
+type Page = 'main' | 'settings' | 'promptSettings' | 'licenses';
 
 function App() {
   const [selectedFiles, setSelectedFiles] = useState<VideoFile[]>([]);
@@ -21,7 +24,7 @@ function App() {
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [generatedDocument, setGeneratedDocument] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
+  const [currentPage, setCurrentPage] = useState<Page>('main');
   const [progressMessage, setProgressMessage] = useState("");
   const [progressStep, setProgressStep] = useState(0);
   const [totalSteps, setTotalSteps] = useState(0);
@@ -188,7 +191,7 @@ function App() {
     try {
       await invoke("save_settings", { settings });
       addLog("[SUCCESS] Settings saved successfully");
-      setShowSettings(false);
+      setCurrentPage('main');
     } catch (error) {
       addLog(`[ERROR] Error saving settings: ${error}`);
       console.error("Error saving settings:", error);
@@ -365,86 +368,100 @@ function App() {
     }
   };
 
-  if (showSettings) {
-    return (
-      <Settings
-        settings={settings}
-        onUpdateSettings={setSettings}
-        onClose={() => setShowSettings(false)}
-        onSave={handleSaveSettings}
-      />
-    );
-  }
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'settings':
+        return (
+          <Settings
+            settings={settings}
+            onUpdateSettings={setSettings}
+            onClose={() => setCurrentPage('main')}
+            onSave={handleSaveSettings}
+            onNavigate={setCurrentPage}
+          />
+        );
+      case 'promptSettings':
+        return (
+          <>
+            <PromptSettings
+              promptPresets={promptPresets}
+              onClose={() => setCurrentPage('main')}
+              onEditPreset={handlePresetEdit}
+              onDeletePreset={handlePresetDeleteRequest}
+              onNewPreset={handleNewPreset}
+              onImportXML={handleImportXML}
+              onExportXML={handleExportXML}
+              isDeleting={isDeleting}
+              showDeleteConfirm={showDeleteConfirm}
+              deleteTargetId={deleteTargetId}
+              onConfirmDelete={handleConfirmDelete}
+              onCancelDelete={handleCancelDelete}
+            />
+            <PresetEditModal
+              isOpen={showEditModal}
+              editingPreset={editingPreset}
+              presetName={newPresetName}
+              presetPrompt={newPresetPrompt}
+              onNameChange={setNewPresetName}
+              onPromptChange={setNewPresetPrompt}
+              onSave={handleSavePreset}
+              onClose={() => setShowEditModal(false)}
+            />
+          </>
+        );
+      case 'licenses':
+        // A back button would be nice here. For now, users can use the main UI buttons.
+        return (
+          <div>
+            <button onClick={() => setCurrentPage('settings')} style={{ margin: '10px', padding: '5px 10px' }}>
+              &larr; 設定に戻る
+            </button>
+            <LicenseDisplay />
+          </div>
+        );
+      case 'main':
+      default:
+        return (
+          <MainDashboard
+            settings={settings}
+            onUpdateSettings={handleUpdateSettingsWithSave}
+            selectedFiles={selectedFiles}
+            onFileSelect={handleFileSelect}
+            onRemoveFile={handleRemoveFile}
+            currentPrompt={currentPrompt}
+            onPromptChange={(prompt) => {
+              setCurrentPrompt(prompt);
+              if (selectedPresetId) {
+                const selectedPreset = promptPresets.find(p => p.id === selectedPresetId);
+                if (selectedPreset && selectedPreset.prompt !== prompt) {
+                  setSelectedPresetId("");
+                }
+              }
+            }}
+            promptPresets={promptPresets}
+            selectedPresetId={selectedPresetId}
+            onPromptPresetSelect={handlePromptPresetSelect}
+            saveDirectory={saveDirectory}
+            onSelectSaveDirectory={handleSelectSaveDirectory}
+            onGenerateDocument={handleGenerateDocument}
+            isProcessing={isProcessing}
+            progressMessage={progressMessage}
+            progressStep={progressStep}
+            totalSteps={totalSteps}
+            logs={logs}
+            showLogs={showLogs}
+            onToggleLogs={() => setShowLogs(!showLogs)}
+            onClearLogs={clearLogs}
+            generatedDocument={generatedDocument}
+            onShowSettings={() => setCurrentPage('settings')}
+            onShowPromptSettings={() => setCurrentPage('promptSettings')}
+            generateFilename={generateFilename}
+          />
+        );
+    }
+  };
 
-  if (showPromptSettings) {
-    return (
-      <>
-        <PromptSettings
-          promptPresets={promptPresets}
-          onClose={() => setShowPromptSettings(false)}
-          onEditPreset={handlePresetEdit}
-          onDeletePreset={handlePresetDeleteRequest}
-          onNewPreset={handleNewPreset}
-          onImportXML={handleImportXML}
-          onExportXML={handleExportXML}
-          isDeleting={isDeleting}
-          showDeleteConfirm={showDeleteConfirm}
-          deleteTargetId={deleteTargetId}
-          onConfirmDelete={handleConfirmDelete}
-          onCancelDelete={handleCancelDelete}
-        />
-        <PresetEditModal
-          isOpen={showEditModal}
-          editingPreset={editingPreset}
-          presetName={newPresetName}
-          presetPrompt={newPresetPrompt}
-          onNameChange={setNewPresetName}
-          onPromptChange={setNewPresetPrompt}
-          onSave={handleSavePreset}
-          onClose={() => setShowEditModal(false)}
-        />
-      </>
-    );
-  }
-
-  return (
-    <MainDashboard
-      settings={settings}
-      onUpdateSettings={handleUpdateSettingsWithSave}
-      selectedFiles={selectedFiles}
-      onFileSelect={handleFileSelect}
-      onRemoveFile={handleRemoveFile}
-      currentPrompt={currentPrompt}
-      onPromptChange={(prompt) => {
-        setCurrentPrompt(prompt);
-        // プロンプトが手動で編集された場合、プリセット選択をリセット
-        if (selectedPresetId) {
-          const selectedPreset = promptPresets.find(p => p.id === selectedPresetId);
-          if (selectedPreset && selectedPreset.prompt !== prompt) {
-            setSelectedPresetId("");
-          }
-        }
-      }}
-      promptPresets={promptPresets}
-      selectedPresetId={selectedPresetId}
-      onPromptPresetSelect={handlePromptPresetSelect}
-      saveDirectory={saveDirectory}
-      onSelectSaveDirectory={handleSelectSaveDirectory}
-      onGenerateDocument={handleGenerateDocument}
-      isProcessing={isProcessing}
-      progressMessage={progressMessage}
-      progressStep={progressStep}
-      totalSteps={totalSteps}
-      logs={logs}
-      showLogs={showLogs}
-      onToggleLogs={() => setShowLogs(!showLogs)}
-      onClearLogs={clearLogs}
-      generatedDocument={generatedDocument}
-      onShowSettings={() => setShowSettings(true)}
-      onShowPromptSettings={() => setShowPromptSettings(true)}
-      generateFilename={generateFilename}
-    />
-  );
+  return <div className="App">{renderPage()}</div>;
 }
 
 export default App;
