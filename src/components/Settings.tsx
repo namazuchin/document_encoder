@@ -59,20 +59,21 @@ export default function Settings({ settings, onUpdateSettings, onClose, onSave }
           </div>
           
           <div className="form-group">
-            <label htmlFor="hardwareEncoding">
-              <FaMicrochip className="icon" /> 
-              <input
-                type="checkbox"
-                id="hardwareEncoding"
-                checked={settings.hardware_encoding || false}
-                onChange={(e) => onUpdateSettings({ ...settings, hardware_encoding: e.target.checked })}
-                style={{ marginLeft: '8px', marginRight: '8px' }}
-              />
-              ハードウェアエンコードを有効にする
-            </label>
-            <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
-              利用可能な場合、ハードウェアエンコードを使用して動画処理を高速化します。
-            </small>
+            <div className="checkbox-group">
+              <label htmlFor="hardwareEncoding" className="checkbox-label">
+                <FaMicrochip className="icon" />
+                <input
+                  type="checkbox"
+                  id="hardwareEncoding"
+                  checked={settings.hardware_encoding || false}
+                  onChange={(e) => onUpdateSettings({ ...settings, hardware_encoding: e.target.checked })}
+                />
+                <span className="checkbox-text">ハードウェアエンコードを有効にする</span>
+              </label>
+              <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                利用可能な場合、ハードウェアエンコードを使用して動画処理を高速化します。
+              </small>
+            </div>
           </div>
           
           <div className="button-group">
