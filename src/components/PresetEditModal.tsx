@@ -1,4 +1,5 @@
 import { PromptPreset } from '../types';
+import { FaSave, FaTimes, FaTag, FaEdit } from 'react-icons/fa';
 
 interface PresetEditModalProps {
   isOpen: boolean;
@@ -28,7 +29,7 @@ export default function PresetEditModal({
       <div className="modal-content">
         <h3>{editingPreset ? 'プリセット編集' : '新規プリセット作成'}</h3>
         <div className="form-group">
-          <label htmlFor="presetName">プリセット名:</label>
+          <label htmlFor="presetName"><FaTag className="icon" /> プリセット名:</label>
           <input
             type="text"
             id="presetName"
@@ -38,7 +39,7 @@ export default function PresetEditModal({
           />
         </div>
         <div className="form-group">
-          <label htmlFor="presetPrompt">プロンプト:</label>
+          <label htmlFor="presetPrompt"><FaEdit className="icon" /> プロンプト:</label>
           <textarea
             id="presetPrompt"
             value={presetPrompt}
@@ -49,9 +50,11 @@ export default function PresetEditModal({
         </div>
         <div className="modal-buttons">
           <button onClick={onSave}>
-            {editingPreset ? '更新' : '作成'}
+            <FaSave className="icon" /> {editingPreset ? '更新' : '作成'}
           </button>
-          <button onClick={onClose}>キャンセル</button>
+          <button onClick={onClose}>
+            <FaTimes className="icon" /> キャンセル
+          </button>
         </div>
       </div>
     </div>

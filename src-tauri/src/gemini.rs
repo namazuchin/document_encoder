@@ -7,8 +7,8 @@ use tauri::Emitter;
 use tokio::time::{sleep, Duration};
 
 use crate::types::{
-    GeminiRequest, GeminiContent, GeminiPart, GeminiFileData, GeminiResponse,
-    GeminiUploadResponse, GeminiGenerationConfig, ProgressUpdate
+    GeminiContent, GeminiFileData, GeminiGenerationConfig, GeminiPart, GeminiRequest,
+    GeminiResponse, GeminiUploadResponse, ImageEmbedFrequency, ProgressUpdate,
 };
 
 // Internal GeminiFileInfo for status polling (with optional fields)
@@ -177,7 +177,9 @@ where
     }
 
     println!("✅ [UPLOAD] File upload completed successfully");
-    let upload_info: GeminiUploadResponse = upload_response.json().await
+    let upload_info: GeminiUploadResponse = upload_response
+        .json()
+        .await
         .map_err(|e| anyhow::anyhow!("Failed to parse upload response: {}", e))?;
     let file_name_on_server = upload_info.file.name.clone();
     println!(
@@ -217,7 +219,9 @@ where
             return Err(anyhow::anyhow!("Failed to get file status: {}", error_text));
         }
 
-        let file_info: GeminiFileStatus = get_response.json().await
+        let file_info: GeminiFileStatus = get_response
+            .json()
+            .await
             .map_err(|e| anyhow::anyhow!("Failed to parse file status response: {}", e))?;
 
         if let Some(state) = &file_info.state {
@@ -293,6 +297,7 @@ pub async fn generate_with_gemini_with_progress(
     custom_prompt: Option<&str>,
     model: &str,
     embed_images: bool,
+    image_embed_frequency: &ImageEmbedFrequency,
     app: &tauri::AppHandle,
     base_step: usize,
     total_steps: usize,
@@ -308,7 +313,18 @@ pub async fn generate_with_gemini_with_progress(
         }
     };
 
-    generate_with_gemini_internal(file_uris, language, api_key, temperature, custom_prompt, model, embed_images, emit_progress).await
+    generate_with_gemini_internal(
+        file_uris,
+        language,
+        api_key,
+        temperature,
+        custom_prompt,
+        model,
+        embed_images,
+        image_embed_frequency,
+        emit_progress,
+    )
+    .await
 }
 
 pub async fn generate_with_gemini_internal<F>(
@@ -319,6 +335,7 @@ pub async fn generate_with_gemini_internal<F>(
     custom_prompt: Option<&str>,
     model: &str,
     embed_images: bool,
+    image_embed_frequency: &ImageEmbedFrequency,
     emit_progress: F,
 ) -> Result<String>
 where
@@ -336,7 +353,8 @@ where
     let prompt = if let Some(custom) = custom_prompt {
         let mut final_prompt = custom.to_string();
         if embed_images {
-            final_prompt.push_str("\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX.XXs] where XX.XXs is the timestamp in seconds (e.g., [Screenshot: 123.45s]). Use these references to mark key moments that would benefit from visual representation.");
+            let image_instruction = get_image_instruction(image_embed_frequency);
+            final_prompt.push_str(&image_instruction);
         }
         final_prompt
     } else {
@@ -354,11 +372,12 @@ where
         5. Any relevant notes or recommendations
         
         {} and format it in a clear, professional manner.", language_instruction);
-        
+
         if embed_images {
-            base_prompt.push_str("\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX.XXs] where XX.XXs is the timestamp in seconds (e.g., [Screenshot: 123.45s]). Use these references to mark key moments that would benefit from visual representation.");
+            let image_instruction = get_image_instruction(image_embed_frequency);
+            base_prompt.push_str(&image_instruction);
         }
-        
+
         base_prompt
     };
 
@@ -389,7 +408,10 @@ where
     println!("🌐 [GENERATE] Sending request to Gemini API...");
     emit_progress("Gemini AIにドキュメント生成を依頼中...".to_string());
     let response = client
-        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", model, api_key))
+        .post(format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            model, api_key
+        ))
         .json(&request)
         .send()
         .await?;
@@ -432,9 +454,11 @@ pub async fn integrate_documents(
     let client = reqwest::Client::new();
 
     let integration_prompt = if let Some(custom) = custom_prompt {
-        format!("{}\n\n=== Documents to integrate ===\n{}", 
-            custom, 
-            documents.iter()
+        format!(
+            "{}\n\n=== Documents to integrate ===\n{}",
+            custom,
+            documents
+                .iter()
                 .enumerate()
                 .map(|(i, doc)| format!("=== Document {} ===\n{}\n", i + 1, doc))
                 .collect::<Vec<_>>()
@@ -443,7 +467,7 @@ pub async fn integrate_documents(
     } else {
         let language_instruction = match language {
             "english" => "Please write the integrated document in English",
-            "japanese" | _ => "Please write the integrated document in Japanese",
+            "japanese" | _ => "ドキュメントは全て日本語で記述してください",
         };
 
         format!(
@@ -474,7 +498,10 @@ pub async fn integrate_documents(
     };
 
     let response = client
-        .post(format!("https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}", model, api_key))
+        .post(format!(
+            "https://generativelanguage.googleapis.com/v1beta/models/{}:generateContent?key={}",
+            model, api_key
+        ))
         .json(&request)
         .send()
         .await?;
@@ -519,11 +546,44 @@ pub fn get_mime_type(file_path: &str) -> String {
     .to_string()
 }
 
+/// Generates image instruction based on embedding frequency
+fn get_image_instruction(frequency: &ImageEmbedFrequency) -> String {
+    match frequency {
+        ImageEmbedFrequency::Minimal => {
+            "\n\nIMPORTANT: When describing the most critical visual elements or key points in the document, please include screenshot references using this exact format: [Screenshot: XX:XXs] where XX:XX is the timestamp in MM:SS format (e.g., [Screenshot: 00:14s], [Screenshot: 01:23s]). Use these references sparingly, only for the most important moments that are essential for understanding.".to_string()
+        },
+        ImageEmbedFrequency::Moderate => {
+            "\n\nIMPORTANT: When describing visual elements or important points in the document, please include screenshot references using this exact format: [Screenshot: XX:XXs] where XX:XX is the timestamp in MM:SS format (e.g., [Screenshot: 00:14s], [Screenshot: 01:23s]). Use these references to mark key moments that would benefit from visual representation.".to_string()
+        },
+        ImageEmbedFrequency::Detailed => {
+            "\n\nIMPORTANT: When describing visual elements, UI components, or detailed explanations in the document, please include screenshot references using this exact format: [Screenshot: XX:XXs] where XX:XX is the timestamp in MM:SS format (e.g., [Screenshot: 00:14s], [Screenshot: 01:23s]). Use these references frequently to provide detailed visual context for readers.".to_string()
+        }
+    }
+}
+
+/// Parses timestamp string in various formats (MM:SS or SS.SS)
+fn parse_timestamp(timestamp_str: &str) -> f64 {
+    if timestamp_str.contains(':') {
+        // Format: MM:SS or MM:SS.SS
+        let parts: Vec<&str> = timestamp_str.split(':').collect();
+        if parts.len() == 2 {
+            let minutes = parts[0].parse::<f64>().unwrap_or(0.0);
+            let seconds = parts[1].parse::<f64>().unwrap_or(0.0);
+            return minutes * 60.0 + seconds;
+        }
+    } else {
+        // Format: SS.SS
+        return timestamp_str.parse::<f64>().unwrap_or(0.0);
+    }
+    0.0
+}
+
 /// Processes the generated document to extract screenshot placeholders and replace them with images
 pub async fn process_document_with_images(
     document: &str,
     video_files: &[String],
     output_directory: &str,
+    _image_embed_frequency: &ImageEmbedFrequency,
 ) -> Result<String> {
     // Create images directory
     let images_dir = Path::new(output_directory).join("images");
@@ -532,7 +592,8 @@ pub async fn process_document_with_images(
     }
 
     // Extract screenshot placeholders using regex
-    let re = Regex::new(r"\[Screenshot:\s*(\d+(?:\.\d+)?)\s*s\]").unwrap();
+    // Updated to handle formats like [Screenshot: 00:14s] and [Screenshot: 123.45s]
+    let re = Regex::new(r"\[Screenshot:\s*(\d{1,2}:\d{2}(?:\.\d+)?|\d+(?:\.\d+)?)\s*s\]").unwrap();
     let mut processed_document = document.to_string();
     let mut image_counter = 1;
 
@@ -541,10 +602,16 @@ pub async fn process_document_with_images(
         .captures_iter(document)
         .map(|caps| {
             let full_match = caps[0].to_string();
-            let timestamp = caps[1].parse::<f64>().unwrap_or(0.0);
+            let timestamp_str = &caps[1];
+            let timestamp = parse_timestamp(timestamp_str);
             (full_match, timestamp)
         })
         .collect();
+
+    println!(
+        "📊 [IMAGE] Found {} screenshot references to process",
+        matches.len()
+    );
 
     // Get video durations to help determine which video contains the timestamp
     let mut video_durations = Vec::new();
@@ -560,52 +627,64 @@ pub async fn process_document_with_images(
 
     for (placeholder, timestamp) in matches {
         let mut frame_extracted = false;
-        
+
         // First, try to find the most appropriate video based on timestamp and duration
         let mut video_candidates: Vec<(usize, &String)> = video_files
             .iter()
             .enumerate()
             .filter(|(i, _)| timestamp <= video_durations[*i])
             .collect();
-        
+
         // If no video can contain this timestamp, try all videos as fallback
         if video_candidates.is_empty() {
             video_candidates = video_files.iter().enumerate().collect();
         }
-        
+
         // Try to extract frame from candidate videos
         for (video_index, video_path) in video_candidates {
             let video_no = video_index + 1; // 1-based indexing
-            // Replace decimal point with underscore for filename compatibility
+                                            // Replace decimal point with underscore for filename compatibility
             let timestamp_str = timestamp.to_string().replace('.', "_");
             let image_filename = format!("image-{}-{}s.png", video_no, timestamp_str);
             let image_path = images_dir.join(&image_filename);
-            
+
             // Extract frame from video
             match crate::video::extract_frame_from_video(
                 video_path,
                 timestamp,
                 image_path.to_str().unwrap(),
-            ).await {
+            )
+            .await
+            {
                 Ok(_) => {
                     let relative_image_path = format!("./images/{}", image_filename);
-                    let markdown_image = format!("![Screenshot {}]({})", image_counter, relative_image_path);
+                    let markdown_image =
+                        format!("![Screenshot {}]({})", image_counter, relative_image_path);
                     processed_document = processed_document.replace(&placeholder, &markdown_image);
                     image_counter += 1;
                     frame_extracted = true;
-                    println!("✅ Successfully extracted frame from video {} at {}s", video_no, timestamp);
+                    println!(
+                        "✅ Successfully extracted frame from video {} at {}s",
+                        video_no, timestamp
+                    );
                     break; // Stop trying other videos once successful
                 }
                 Err(e) => {
-                    println!("⚠️ Failed to extract frame from video {} at {}s: {}", video_no, timestamp, e);
+                    println!(
+                        "⚠️ Failed to extract frame from video {} at {}s: {}",
+                        video_no, timestamp, e
+                    );
                     // Continue to try next video
                 }
             }
         }
-        
+
         // If no video could provide the frame, remove the placeholder
         if !frame_extracted {
-            println!("❌ Failed to extract frame at {}s from any video", timestamp);
+            println!(
+                "❌ Failed to extract frame at {}s from any video",
+                timestamp
+            );
             processed_document = processed_document.replace(&placeholder, "");
         }
     }

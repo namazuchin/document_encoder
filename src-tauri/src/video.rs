@@ -1,8 +1,17 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::io::{BufRead, BufReader};
 
 use anyhow::{anyhow, Result};
 use log::debug;
+
+use crate::types::VideoQuality;
+
+#[derive(Debug, Clone)]
+pub struct VideoResolution {
+    pub width: u32,
+    pub height: u32,
+}
 // Removed deprecated tauri::api::process::Command import
 
 fn find_executable(name: &str) -> Result<PathBuf> {
@@ -40,6 +49,49 @@ fn find_executable(name: &str) -> Result<PathBuf> {
             common_paths
         )
     })
+}
+
+/// Gets the resolution of a video file using ffprobe
+pub async fn get_video_resolution(video_path: &str) -> Result<VideoResolution> {
+    debug!("Getting video resolution for: {}", video_path);
+    let ffprobe_path = find_executable("ffprobe")?;
+
+    let output = Command::new(&ffprobe_path)
+        .args([
+            "-v",
+            "error",
+            "-select_streams",
+            "v:0",
+            "-show_entries",
+            "stream=width,height",
+            "-of",
+            "csv=s=x:p=0",
+            video_path,
+        ])
+        .output()?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(anyhow!("ffprobe failed: {}", stderr));
+    }
+
+    let resolution_str = String::from_utf8(output.stdout)?.trim().to_string();
+    debug!("Got resolution: {}", resolution_str);
+
+    let parts: Vec<&str> = resolution_str.split('x').collect();
+    if parts.len() != 2 {
+        return Err(anyhow!("Invalid resolution format: {}", resolution_str));
+    }
+
+    let width = parts[0].parse::<u32>().map_err(|e| {
+        anyhow!("Failed to parse width '{}': {}", parts[0], e)
+    })?;
+
+    let height = parts[1].parse::<u32>().map_err(|e| {
+        anyhow!("Failed to parse height '{}': {}", parts[1], e)
+    })?;
+
+    Ok(VideoResolution { width, height })
 }
 
 /// Gets the duration of a video file in seconds using ffprobe
@@ -162,4 +214,260 @@ pub async fn extract_frame_from_video(
     
     debug!("Successfully extracted frame to: {}", output_path);
     Ok(())
+}
+
+/// Encodes a video to the specified quality if conversion is needed
+/// Returns the path to the encoded video (or original if no conversion needed)
+pub async fn encode_video_if_needed<F>(
+    video_path: &str,
+    target_quality: &VideoQuality,
+    output_dir: &Path,
+    progress_callback: F,
+    hardware_encoding: bool,
+) -> Result<PathBuf>
+where
+    F: Fn(String),
+{
+    debug!("Checking if video encoding is needed for: {}", video_path);
+    
+    // If no conversion is requested, return original path
+    if *target_quality == VideoQuality::NoConversion {
+        return Ok(PathBuf::from(video_path));
+    }
+    
+    // Get current resolution
+    let current_resolution = get_video_resolution(video_path).await?;
+    debug!("Current resolution: {}x{}", current_resolution.width, current_resolution.height);
+    
+    // Determine target resolution
+    let (target_width, target_height) = match target_quality {
+        VideoQuality::Quality1080p => (1920, 1080),
+        VideoQuality::Quality720p => (1280, 720),
+        VideoQuality::Quality480p => (854, 480),
+        VideoQuality::NoConversion => unreachable!(),
+    };
+    
+    // Check if encoding is needed
+    let needs_encoding = current_resolution.height > target_height 
+        || (current_resolution.height == target_height && current_resolution.width > target_width);
+    
+    if !needs_encoding {
+        debug!("Video already at or below target quality, no encoding needed");
+        return Ok(PathBuf::from(video_path));
+    }
+    
+    progress_callback("動画のエンコードを開始しています...".to_string());
+    
+    let input_path = Path::new(video_path);
+    let filename = input_path.file_stem()
+        .ok_or_else(|| anyhow!("Invalid video file name"))?
+        .to_str()
+        .ok_or_else(|| anyhow!("Invalid video file name encoding"))?;
+    
+    let output_filename = format!("{}_{}.mp4", filename, target_quality_string(target_quality));
+    let output_path = output_dir.join(output_filename);
+    
+    debug!("Encoding video to: {:?}", output_path);
+    
+    let ffmpeg_path = find_executable("ffmpeg")?;
+    
+    // Get video duration for progress calculation
+    let duration = get_video_duration(video_path).await?;
+    
+    // Choose video encoder based on hardware encoding setting
+    let video_encoder = if hardware_encoding {
+        match get_best_hardware_encoder().await {
+            Some(encoder) => {
+                debug!("Using hardware encoder: {}", encoder);
+                progress_callback(format!("ハードウェアエンコーダーを使用します: {}", encoder));
+                
+                // Test if hardware encoder is actually working
+                if let Err(e) = test_hardware_encoder(&encoder).await {
+                    debug!("Hardware encoder test failed: {}, falling back to software encoder", e);
+                    progress_callback("ハードウェアエンコーダーのテストに失敗しました。ソフトウェアエンコーダーを使用します...".to_string());
+                    "libx264".to_string()
+                } else {
+                    encoder
+                }
+            }
+            None => {
+                debug!("Hardware encoding requested but no hardware encoder available, falling back to software");
+                progress_callback("ハードウェアエンコーダーが利用できません。ソフトウェアエンコーダーを使用します...".to_string());
+                "libx264".to_string()
+            }
+        }
+    } else {
+        debug!("Using software encoder: libx264");
+        "libx264".to_string()
+    };
+    
+    // Build ffmpeg command arguments
+    let scale_filter = format!("scale={}:{}", target_width, target_height);
+    let mut args = vec![
+        "-i", video_path,
+        "-vf", &scale_filter,
+        "-c:v", &video_encoder,
+        "-c:a", "aac",
+    ];
+    
+    // Add quality settings based on encoder type
+    if video_encoder == "libx264" {
+        // Software encoding quality settings
+        args.extend_from_slice(&["-crf", "23"]);
+    } else {
+        // Hardware encoding quality settings
+        args.extend_from_slice(&["-b:v", "5M"]); // 5 Mbps bitrate for hardware encoding
+    }
+    
+    // Add progress and output settings
+    args.extend_from_slice(&[
+        "-progress", "pipe:1",
+        "-y",
+        output_path.to_str().unwrap(),
+    ]);
+    
+    debug!("Executing ffmpeg command: {:?} {:?}", ffmpeg_path, args);
+    let mut command = Command::new(&ffmpeg_path)
+        .args(args)
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()?;
+    
+    // Monitor progress and capture stderr
+    let mut stderr_output = String::new();
+    
+    // Read stderr in a separate thread to capture error messages
+    let stderr_handle = if let Some(stderr) = command.stderr.take() {
+        let stderr_reader = BufReader::new(stderr);
+        Some(std::thread::spawn(move || {
+            let mut errors = String::new();
+            for line in stderr_reader.lines() {
+                if let Ok(line) = line {
+                    errors.push_str(&line);
+                    errors.push('\n');
+                }
+            }
+            errors
+        }))
+    } else {
+        None
+    };
+    
+    // Monitor progress
+    if let Some(stdout) = command.stdout.take() {
+        let reader = BufReader::new(stdout);
+        for line in reader.lines() {
+            match line {
+                Ok(line) => {
+                    if line.starts_with("out_time_ms=") {
+                        if let Ok(time_ms) = line[12..].parse::<f64>() {
+                            let current_time = time_ms / 1_000_000.0; // Convert microseconds to seconds
+                            let progress_percent = ((current_time / duration) * 100.0).min(100.0);
+                            progress_callback(format!("エンコード中... {:.1}%", progress_percent));
+                        }
+                    }
+                }
+                Err(_) => break,
+            }
+        }
+    }
+    
+    let status = command.wait()?;
+    
+    // Get stderr output from the background thread
+    if let Some(handle) = stderr_handle {
+        if let Ok(errors) = handle.join() {
+            stderr_output = errors;
+        }
+    }
+    
+    if !status.success() {
+        debug!("ffmpeg stderr: {}", stderr_output);
+        return Err(anyhow!("Video encoding failed: {}", stderr_output));
+    }
+    
+    progress_callback("エンコードが完了しました".to_string());
+    debug!("Video encoding completed: {:?}", output_path);
+    
+    Ok(output_path)
+}
+
+fn target_quality_string(quality: &VideoQuality) -> &str {
+    match quality {
+        VideoQuality::Quality1080p => "1080p",
+        VideoQuality::Quality720p => "720p", 
+        VideoQuality::Quality480p => "480p",
+        VideoQuality::NoConversion => "original",
+    }
+}
+
+
+/// Tests if a hardware encoder is actually working
+async fn test_hardware_encoder(encoder: &str) -> Result<()> {
+    debug!("Testing hardware encoder: {}", encoder);
+    
+    let ffmpeg_path = find_executable("ffmpeg")?;
+    
+    // Create a simple test: generate a small test video and try to encode it
+    let output = Command::new(&ffmpeg_path)
+        .args([
+            "-f", "lavfi",
+            "-i", "testsrc=duration=1:size=320x240:rate=30",
+            "-c:v", encoder,
+            "-t", "1",
+            "-f", "null",
+            "-",
+        ])
+        .output()?;
+    
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        debug!("Hardware encoder test failed: {}", stderr);
+        return Err(anyhow!("Hardware encoder test failed: {}", stderr));
+    }
+    
+    debug!("Hardware encoder test passed for: {}", encoder);
+    Ok(())
+}
+
+/// Gets the best available hardware encoder for the current system
+pub async fn get_best_hardware_encoder() -> Option<String> {
+    let ffmpeg_path = match find_executable("ffmpeg") {
+        Ok(path) => path,
+        Err(_) => return None,
+    };
+    
+    // Get list of available encoders
+    let output = match Command::new(&ffmpeg_path)
+        .args(["-encoders"])
+        .output()
+    {
+        Ok(output) => output,
+        Err(_) => return None,
+    };
+    
+    if !output.status.success() {
+        return None;
+    }
+    
+    let encoder_list = String::from_utf8(output.stdout).ok()?;
+    
+    // Priority order of hardware encoders (best first)
+    let encoder_priority = vec![
+        "h264_videotoolbox", // Apple VideoToolbox (macOS)
+        "h264_nvenc",        // NVIDIA NVENC
+        "h264_qsv",          // Intel Quick Sync
+        "h264_amf",          // AMD AMF
+        "h264_vaapi",        // VAAPI
+        "h264_v4l2m2m",      // V4L2 Memory-to-Memory
+    ];
+    
+    for encoder in encoder_priority {
+        if encoder_list.contains(encoder) {
+            debug!("Selected hardware encoder: {}", encoder);
+            return Some(encoder.to_string());
+        }
+    }
+    
+    None
 }

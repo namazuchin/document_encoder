@@ -4,6 +4,10 @@ export interface VideoFile {
   size: number;
 }
 
+export type VideoQuality = "NoConversion" | "1080p" | "720p" | "480p";
+
+export type ImageEmbedFrequency = "minimal" | "moderate" | "detailed";
+
 export interface AppSettings {
   gemini_api_key: string;
   language: string;
@@ -11,6 +15,9 @@ export interface AppSettings {
   custom_prompt?: string;
   gemini_model?: string;
   embed_images?: boolean;
+  image_embed_frequency?: ImageEmbedFrequency;
+  video_quality?: VideoQuality;
+  hardware_encoding?: boolean;
 }
 
 export interface PromptPreset {
