@@ -45,11 +45,6 @@ const LicenseDisplay: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           throw new Error(`Failed to fetch cargo licenses: ${cargoRes.statusText}`);
         }
         const cargoData = await cargoRes.json();
-        console.log("Full cargo data:", cargoData);
-        if (cargoData.crates && cargoData.crates.length > 0) {
-          console.log("First cargo crate object:", cargoData.crates[0]);
-          console.log("Keys of first cargo crate:", Object.keys(cargoData.crates[0]));
-        }
         setCargoLicenses(cargoData.crates || []);
         
       } catch (e: any) {
@@ -95,7 +90,11 @@ const LicenseDisplay: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               <summary>
                 {license.package.name}@{license.package.version} - ({license.license})
               </summary>
-              <pre className="license-text">{license.text}</pre>
+              {license.text ? (
+                <pre className="license-text">{license.text}</pre>
+              ) : (
+                <p className="no-license-text">ライセンステキストが利用できません</p>
+              )}
             </details>
           ))}
         </div>
