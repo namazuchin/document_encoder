@@ -409,15 +409,7 @@ function App() {
           </>
         );
       case 'licenses':
-        // A back button would be nice here. For now, users can use the main UI buttons.
-        return (
-          <div>
-            <button onClick={() => setCurrentPage('settings')} style={{ margin: '10px', padding: '5px 10px' }}>
-              &larr; 設定に戻る
-            </button>
-            <LicenseDisplay />
-          </div>
-        );
+        return <LicenseDisplay onBack={() => setCurrentPage('settings')} />;
       case 'main':
       default:
         return (
