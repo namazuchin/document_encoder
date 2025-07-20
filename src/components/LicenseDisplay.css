@@ -41,4 +41,11 @@
   word-wrap: break-word;
   max-height: 300px;
   overflow-y: auto;
+  /* スクロールバーを非表示 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.license-text::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
 }
