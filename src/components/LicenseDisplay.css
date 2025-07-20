@@ -49,4 +49,14 @@
   border-top: 1px solid #ddd;
   color: #666;
   font-style: italic;
+}
+
+.no-license-text a {
+  color: #0066cc;
+  text-decoration: none;
+  word-break: break-all;
+}
+
+.no-license-text a:hover {
+  text-decoration: underline;
 } 

@@ -15,6 +15,7 @@ interface CargoLicense {
   package: {
     name: string;
     version: string;
+    source: string;
   };
   text: string;
 }
@@ -93,7 +94,10 @@ const LicenseDisplay: React.FC<{ onBack: () => void }> = ({ onBack }) => {
               {license.text ? (
                 <pre className="license-text">{license.text}</pre>
               ) : (
-                <p className="no-license-text">ライセンステキストが利用できません</p>
+                <div className="no-license-text">
+                  <p>ライセンステキストが利用できません</p>
+                  <p><strong>Source:</strong> <a href={license.package.source} target="_blank" rel="noopener noreferrer">{license.package.source}</a></p>
+                </div>
               )}
             </details>
           ))}
