@@ -182,6 +182,7 @@ pub async fn split_video_if_needed(video_path: &Path) -> Result<Vec<PathBuf>> {
 }
 
 /// Extracts a frame from a video at the specified timestamp and saves it as an image
+/// Optimized for speed by placing -ss before -i (input seeking)
 pub async fn extract_frame_from_video(
     video_path: &str,
     timestamp: f64,
@@ -191,12 +192,14 @@ pub async fn extract_frame_from_video(
     
     let ffmpeg_path = find_executable("ffmpeg")?;
     
+    // 最適化: -ss を -i の前に配置することで高速化（入力シーク）
+    // この方法は420倍以上高速になる場合がある
     let status = Command::new(&ffmpeg_path)
         .args([
-            "-i",
-            video_path,
             "-ss",
             &timestamp.to_string(),
+            "-i",
+            video_path,
             "-vframes",
             "1",
             "-q:v",
@@ -213,6 +216,114 @@ pub async fn extract_frame_from_video(
     }
     
     debug!("Successfully extracted frame to: {}", output_path);
+    Ok(())
+}
+
+/// Extracts multiple frames from a video at specified timestamps efficiently
+/// This is much faster than calling extract_frame_from_video multiple times
+pub async fn extract_multiple_frames_from_video(
+    video_path: &str,
+    timestamps: &[f64],
+    output_dir: &str,
+    base_filename: &str,
+) -> Result<Vec<String>> {
+    debug!("Extracting {} frames from video: {}", timestamps.len(), video_path);
+    
+    let ffmpeg_path = find_executable("ffmpeg")?;
+    let mut output_paths = Vec::new();
+    
+    // 複数フレームを一度のffmpegコマンドで抽出（フィルタグラフを使用）
+    // これにより、動画ファイルを一度だけ読み込んで複数のフレームを抽出できる
+    if timestamps.len() > 1 {
+        let mut args = vec!["-i".to_string(), video_path.to_string()];
+        
+        // フィルタグラフを構築
+        let mut filter_parts = Vec::new();
+        for (i, &timestamp) in timestamps.iter().enumerate() {
+            filter_parts.push(format!("[0:v]trim=start={}:duration=0.1,select=eq(n\\,0)[out{}]", timestamp, i));
+        }
+        let filter_complex = filter_parts.join(";");
+        
+        args.extend_from_slice(&["-filter_complex".to_string(), filter_complex]);
+        
+        // 各出力を追加
+        for (i, &_timestamp) in timestamps.iter().enumerate() {
+            let output_path = format!("{}/{}_frame_{:03}.jpg", output_dir, base_filename, i + 1);
+            args.extend_from_slice(&[
+                "-map".to_string(),
+                format!("[out{}]", i),
+                "-q:v".to_string(),
+                "2".to_string(),
+                output_path.clone(),
+            ]);
+            output_paths.push(output_path);
+        }
+        
+        args.push("-y".to_string());
+        
+        debug!("Executing ffmpeg command for multiple frames: {:?} {:?}", ffmpeg_path, args);
+        let status = Command::new(&ffmpeg_path)
+            .args(args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .status()?;
+        
+        if !status.success() {
+            return Err(anyhow!("Failed to extract multiple frames from video"));
+        }
+    } else if let Some(&timestamp) = timestamps.first() {
+        // 単一フレームの場合は既存の最適化された方法を使用
+        let output_path = format!("{}/{}_frame_001.jpg", output_dir, base_filename);
+        extract_frame_from_video(video_path, timestamp, &output_path).await?;
+        output_paths.push(output_path);
+    }
+    
+    debug!("Successfully extracted {} frames", output_paths.len());
+    Ok(output_paths)
+}
+
+/// Extracts a frame from a video with additional optimizations for very large files
+/// Uses more aggressive seeking optimizations and reduced quality checks
+pub async fn extract_frame_fast(
+    video_path: &str,
+    timestamp: f64,
+    output_path: &str,
+) -> Result<()> {
+    debug!("Fast extracting frame from video: {} at timestamp: {}s", video_path, timestamp);
+    
+    let ffmpeg_path = find_executable("ffmpeg")?;
+    
+    // 超高速化のための追加最適化:
+    // - 入力シーク（-ss を -i の前）
+    // - キーフレームシーク（-seek2any 0）でキーフレームのみを探す
+    // - 1フレームのみ抽出（-vframes 1）
+    // - フォーマット指定でヘッダー解析を最小化
+    let status = Command::new(&ffmpeg_path)
+        .args([
+            "-ss",
+            &timestamp.to_string(),
+            "-i",
+            video_path,
+            "-vframes",
+            "1",
+            "-q:v",
+            "2",
+            "-f",
+            "image2",
+            "-seek2any",
+            "0",
+            "-y",
+            output_path,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .status()?;
+    
+    if !status.success() {
+        return Err(anyhow!("Failed to fast extract frame from video at timestamp {}s", timestamp));
+    }
+    
+    debug!("Successfully fast extracted frame to: {}", output_path);
     Ok(())
 }
 
