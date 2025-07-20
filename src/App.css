@@ -14,6 +14,17 @@
   -webkit-text-size-adjust: 100%;
 }
 
+/* グローバルスクロールバー非表示 */
+html, body {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
+}
+
 .container {
   width: 100%;
   height: 100vh;
@@ -53,8 +64,13 @@
   height: 100%;
   /* 明示的な幅を指定 */
   width: 50%;
-  /* スクロールバーを表示 */
-  overflow-y: scroll;
+  /* スクロールバーを非表示 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.left-panel::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
 }
 
 .right-panel {
@@ -67,6 +83,13 @@
   overflow: hidden;
   /* 明示的な幅を指定 */
   width: 50%;
+  /* スクロールバーを非表示 */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
+.right-panel::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
 }
 
 .header h1 {
@@ -1381,31 +1404,20 @@ button:active {
   border-color: #adb5bd;
 }
 
-/* スクロールバーのスタイリング */
+/* スクロールバーを完全に非表示 */
+.log-container,
+.file-list-container,
+.document-content,
+.preset-list {
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* Internet Explorer 10+ */
+}
+
 .log-container::-webkit-scrollbar,
 .file-list-container::-webkit-scrollbar,
-.document-content::-webkit-scrollbar {
-  width: 8px;
-}
-
-.log-container::-webkit-scrollbar-track,
-.file-list-container::-webkit-scrollbar-track,
-.document-content::-webkit-scrollbar-track {
-  background: #f1f1f1;
-  border-radius: 4px;
-}
-
-.log-container::-webkit-scrollbar-thumb,
-.file-list-container::-webkit-scrollbar-thumb,
-.document-content::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 4px;
-}
-
-.log-container::-webkit-scrollbar-thumb:hover,
-.file-list-container::-webkit-scrollbar-thumb:hover,
-.document-content::-webkit-scrollbar-thumb:hover {
-  background: #a8a8a8;
+.document-content::-webkit-scrollbar,
+.preset-list::-webkit-scrollbar {
+  display: none; /* Safari and Chrome */
 }
 
 /* プロンプト設定画面専用のスタイル */

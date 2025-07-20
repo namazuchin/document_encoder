@@ -1,0 +1,15 @@
+{
+  "crates": [
+    {{#each crates}}
+    {
+      "license": "{{license}}",
+      "package": {
+        "name": "{{package.name}}",
+        "version": "{{package.version}}",
+        "source": "{{package.source}}"
+      },
+      "text": {{{json text}}}
+    }{{#unless @last}},{{/unless}}
+    {{/each}}
+  ]
+} 

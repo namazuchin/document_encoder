@@ -1,14 +1,15 @@
 import { AppSettings } from '../types';
-import { FaSave, FaTimes, FaKey, FaThermometerHalf, FaRobot, FaMicrochip, FaVideo } from 'react-icons/fa';
+import { FaSave, FaTimes, FaKey, FaThermometerHalf, FaRobot, FaMicrochip, FaVideo, FaInfoCircle } from 'react-icons/fa';
 
 interface SettingsProps {
   settings: AppSettings;
   onUpdateSettings: (settings: AppSettings) => void;
   onClose: () => void;
   onSave: () => void;
+  onNavigate: (page: 'licenses') => void;
 }
 
-export default function Settings({ settings, onUpdateSettings, onClose, onSave }: SettingsProps) {
+export default function Settings({ settings, onUpdateSettings, onClose, onSave, onNavigate }: SettingsProps) {
   return (
     <div className="api-settings-container">
       <div className="api-settings-content">
@@ -88,6 +89,17 @@ export default function Settings({ settings, onUpdateSettings, onClose, onSave }
             </div>
           </div>
           
+          <div className="settings-section">
+            <h3 className="section-title">
+              <FaInfoCircle className="icon" /> アプリケーション情報
+            </h3>
+            <div className="form-group">
+              <button onClick={() => onNavigate('licenses')} className="link-button">
+                オープンソースライセンス
+              </button>
+            </div>
+          </div>
+
           <div className="button-group">
             <button onClick={onSave}>
               <FaSave className="icon" /> 保存
