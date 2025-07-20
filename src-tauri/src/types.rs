@@ -14,11 +14,21 @@ pub enum VideoQuality {
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub enum ImageEmbedFrequency {
     #[serde(rename = "minimal")]
-    Minimal,    // 最小限（重要なポイントのみ）
+    Minimal, // 最小限（重要なポイントのみ）
     #[serde(rename = "moderate")]
-    Moderate,   // 適度（通常）
+    Moderate, // 適度（通常）
     #[serde(rename = "detailed")]
-    Detailed,   // 詳細（多め）
+    Detailed, // 詳細（多め）
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub enum FrameExtractionMethod {
+    #[serde(rename = "standard")]
+    Standard, // 標準の extract_frame_from_video
+    #[serde(rename = "fast")]
+    Fast, // 高速版 extract_frame_fast
+    #[serde(rename = "multiple")]
+    Multiple, // 複数同時 extract_multiple_frames_from_video
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -47,6 +57,11 @@ pub struct AppSettings {
     pub video_quality: VideoQuality,
     #[serde(default)]
     pub hardware_encoding: bool,
+    // 実験用機能
+    #[serde(default)]
+    pub enable_experimental_features: bool,
+    #[serde(default = "default_frame_extraction_method")]
+    pub frame_extraction_method: FrameExtractionMethod,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -74,6 +89,10 @@ pub fn default_video_quality() -> VideoQuality {
 
 pub fn default_image_embed_frequency() -> ImageEmbedFrequency {
     ImageEmbedFrequency::Moderate
+}
+
+pub fn default_frame_extraction_method() -> FrameExtractionMethod {
+    FrameExtractionMethod::Standard
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

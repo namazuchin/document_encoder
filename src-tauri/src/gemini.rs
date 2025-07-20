@@ -7,8 +7,9 @@ use tauri::Emitter;
 use tokio::time::{sleep, Duration};
 
 use crate::types::{
-    GeminiContent, GeminiFileData, GeminiGenerationConfig, GeminiPart, GeminiRequest,
-    GeminiResponse, GeminiUploadResponse, ImageEmbedFrequency, ProgressUpdate,
+    AppSettings, FrameExtractionMethod, GeminiContent, GeminiFileData, GeminiGenerationConfig,
+    GeminiPart, GeminiRequest, GeminiResponse, GeminiUploadResponse, ImageEmbedFrequency,
+    ProgressUpdate,
 };
 
 // Internal GeminiFileInfo for status polling (with optional fields)
@@ -584,6 +585,7 @@ pub async fn process_document_with_images(
     video_files: &[String],
     output_directory: &str,
     _image_embed_frequency: &ImageEmbedFrequency,
+    settings: &AppSettings,
 ) -> Result<String> {
     // Create images directory
     let images_dir = Path::new(output_directory).join("images");
@@ -648,14 +650,65 @@ pub async fn process_document_with_images(
             let image_filename = format!("image-{}-{}s.png", video_no, timestamp_str);
             let image_path = images_dir.join(&image_filename);
 
-            // Extract frame from video
-            match crate::video::extract_frame_from_video(
-                video_path,
-                timestamp,
-                image_path.to_str().unwrap(),
-            )
-            .await
-            {
+            // Extract frame from video using the selected method
+            let extraction_result = if settings.enable_experimental_features {
+                match settings.frame_extraction_method {
+                    FrameExtractionMethod::Fast => {
+                        crate::video::extract_frame_fast(
+                            video_path,
+                            timestamp,
+                            image_path.to_str().unwrap(),
+                        )
+                        .await
+                    }
+                    FrameExtractionMethod::Multiple => {
+                        // For single frame extraction, use multiple method with single timestamp
+                        match crate::video::extract_multiple_frames_from_video(
+                            video_path,
+                            &[timestamp],
+                            images_dir.to_str().unwrap(),
+                            &format!("video-{}-{}s", video_no, timestamp_str),
+                        )
+                        .await
+                        {
+                            Ok(paths) if !paths.is_empty() => {
+                                // If successful, move the generated file to the expected location
+                                if let Some(generated_path) = paths.first() {
+                                    if Path::new(generated_path).exists()
+                                        && generated_path != image_path.to_str().unwrap()
+                                    {
+                                        if let Err(e) =
+                                            fs::rename(generated_path, image_path.to_str().unwrap())
+                                        {
+                                            println!("⚠️ Failed to move generated image: {}", e);
+                                        }
+                                    }
+                                }
+                                Ok(())
+                            }
+                            Ok(_) => Err(anyhow::anyhow!("No frames extracted")),
+                            Err(e) => Err(e),
+                        }
+                    }
+                    FrameExtractionMethod::Standard => {
+                        crate::video::extract_frame_from_video(
+                            video_path,
+                            timestamp,
+                            image_path.to_str().unwrap(),
+                        )
+                        .await
+                    }
+                }
+            } else {
+                crate::video::extract_frame_from_video(
+                    video_path,
+                    timestamp,
+                    image_path.to_str().unwrap(),
+                )
+                .await
+            };
+
+            match extraction_result {
                 Ok(_) => {
                     let relative_image_path = format!("./images/{}", image_filename);
                     let markdown_image =

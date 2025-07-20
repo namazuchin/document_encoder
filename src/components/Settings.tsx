@@ -1,5 +1,5 @@
 import { AppSettings } from '../types';
-import { FaSave, FaTimes, FaKey, FaThermometerHalf, FaRobot, FaMicrochip, FaVideo, FaInfoCircle } from 'react-icons/fa';
+import { FaSave, FaTimes, FaKey, FaThermometerHalf, FaRobot, FaMicrochip, FaVideo, FaInfoCircle, FaFlask } from 'react-icons/fa';
 
 interface SettingsProps {
   settings: AppSettings;
@@ -87,6 +87,46 @@ export default function Settings({ settings, onUpdateSettings, onClose, onSave, 
                 </small>
               </div>
             </div>
+          </div>
+          
+          <div className="settings-section">
+            <h3 className="section-title">
+              <FaFlask className="icon" /> 実験用機能
+            </h3>
+            
+            <div className="form-group">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={settings.enable_experimental_features || false}
+                  onChange={(e) => onUpdateSettings({ ...settings, enable_experimental_features: e.target.checked })}
+                />
+                <span className="checkbox-text">実験用機能を有効にする</span>
+              </label>
+              <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                新しい高速化機能やテスト中の機能を使用できるようにします。安定性が保証されない場合があります。
+              </small>
+            </div>
+
+            {settings.enable_experimental_features && (
+              <div className="form-group">
+                <label htmlFor="frameExtractionMethod">フレーム抽出方法:</label>
+                <select
+                  id="frameExtractionMethod"
+                  value={settings.frame_extraction_method || 'standard'}
+                  onChange={(e) => onUpdateSettings({ ...settings, frame_extraction_method: e.target.value as any })}
+                >
+                  <option value="standard">標準（安定版）</option>
+                  <option value="fast">高速版（実験的）</option>
+                  <option value="multiple">複数同時処理（実験的）</option>
+                </select>
+                <small style={{ color: '#666', fontSize: '12px', marginTop: '4px', display: 'block' }}>
+                  {settings.frame_extraction_method === 'fast' && '大容量ファイル向けの超高速フレーム抽出を使用します。'}
+                  {settings.frame_extraction_method === 'multiple' && '複数フレームを同時に処理して効率化します。'}
+                  {(!settings.frame_extraction_method || settings.frame_extraction_method === 'standard') && '安定した標準のフレーム抽出を使用します。'}
+                </small>
+              </div>
+            )}
           </div>
           
           <div className="settings-section">
