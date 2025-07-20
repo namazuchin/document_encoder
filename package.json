@@ -4,9 +4,9 @@
   "version": "0.3.0",
   "type": "module",
   "scripts": {
-    "predev": "cargo about generate --manifest-path src-tauri/Cargo.toml src-tauri/about.hbs -o public/licenses-cargo.json",
+    "predev": "",
     "dev": "vite",
-    "build": "tsc && vite build && cargo about generate --manifest-path src-tauri/Cargo.toml src-tauri/about.hbs -o ../dist/licenses-cargo.json",
+    "build": "tsc && vite build",
     "preview": "vite preview",
     "tauri": "tauri"
   },

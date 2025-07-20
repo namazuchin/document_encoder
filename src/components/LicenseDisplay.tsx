@@ -10,19 +10,9 @@ interface NpmLicense {
   licenseText?: string;
 }
 
-interface CargoLicense {
-  license: string;
-  package: {
-    name: string;
-    version: string;
-    source: string;
-  };
-  text: string;
-}
 
 const LicenseDisplay: React.FC<{ onBack: () => void }> = ({ onBack }) => {
   const [npmLicenses, setNpmLicenses] = useState<NpmLicense[]>([]);
-  const [cargoLicenses, setCargoLicenses] = useState<CargoLicense[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
@@ -39,14 +29,6 @@ const LicenseDisplay: React.FC<{ onBack: () => void }> = ({ onBack }) => {
         }
         const npmData = await npmRes.json();
         setNpmLicenses(npmData.dependencies || []);
-
-        // Fetch Cargo licenses
-        const cargoRes = await fetch('/licenses-cargo.json');
-        if (!cargoRes.ok) {
-          throw new Error(`Failed to fetch cargo licenses: ${cargoRes.statusText}`);
-        }
-        const cargoData = await cargoRes.json();
-        setCargoLicenses(cargoData.crates || []);
         
       } catch (e: any) {
         setError(`ライセンス情報の読み込みに失敗しました: ${e.message}`);
@@ -71,7 +53,6 @@ const LicenseDisplay: React.FC<{ onBack: () => void }> = ({ onBack }) => {
       <button onClick={onBack} className="back-button">← 設定に戻る</button>
       <h1>オープンソースライセンス</h1>
 
-      <h2>Frontend Dependencies</h2>
       <div className="license-list">
         {npmLicenses.map((license) => (
           <details key={`${license.name}@${license.version}`} className="license-item">
@@ -82,29 +63,6 @@ const LicenseDisplay: React.FC<{ onBack: () => void }> = ({ onBack }) => {
           </details>
         ))}
       </div>
-
-      <h2>Backend Dependencies</h2>
-      {cargoLicenses.length > 0 ? (
-        <div className="license-list">
-          {cargoLicenses.map((license, index) => (
-            <details key={`cargo-${index}`} className="license-item">
-              <summary>
-                {license.package.name}@{license.package.version} - ({license.license})
-              </summary>
-              {license.text ? (
-                <pre className="license-text">{license.text}</pre>
-              ) : (
-                <div className="no-license-text">
-                  <p>ライセンステキストが利用できません</p>
-                  <p><strong>Source:</strong> <a href={license.package.source} target="_blank" rel="noopener noreferrer">{license.package.source}</a></p>
-                </div>
-              )}
-            </details>
-          ))}
-        </div>
-      ) : (
-        <p>No backend licenses found.</p>
-      )}
     </div>
   );
 };
