@@ -50,7 +50,7 @@ export default defineConfig(async () => ({
   },
   // 4. build assets to `dist` directory next to `src-tauri`
   build: {
-    outDir: '../dist',
+    outDir: 'dist',
     rollupOptions: {
       output: {
         // an empty entry file is needed so that rollup-plugin-license can generate the license file
