@@ -57,8 +57,43 @@ function App() {
   };
 
   useEffect(() => {
-    loadSettings();
-    loadPromptPresets();
+    const initializeApp = async () => {
+      // Check FFmpeg availability on startup
+      try {
+        const ffmpegInstalled = await invoke<boolean>("check_ffmpeg_installed");
+        if (!ffmpegInstalled) {
+          const message = `FFmpegが見つかりません。
+
+このアプリケーションは動画処理にFFmpegを使用します。
+以下の手順でFFmpegをインストールしてください：
+
+macOSの場合：
+1. Homebrewをインストール（まだの場合）
+2. ターミナルで以下のコマンドを実行：
+   brew install ffmpeg
+
+Windowsの場合：
+1. https://ffmpeg.org/download.html からFFmpegをダウンロード
+2. システムのPATH環境変数にFFmpegを追加
+
+インストール後、アプリケーションを再起動してください。`;
+          
+          alert(message);
+          addLog("[ERROR] FFmpeg is not installed or not found in PATH");
+        } else {
+          addLog("[SUCCESS] FFmpeg installation confirmed");
+        }
+      } catch (error) {
+        console.error("Error checking FFmpeg installation:", error);
+        addLog(`[ERROR] Failed to check FFmpeg installation: ${error}`);
+      }
+      
+      // Load settings and presets
+      await loadSettings();
+      await loadPromptPresets();
+    };
+
+    initializeApp();
     
     addLog("[INFO] Setting up progress update listener...");
     const unsubscribe = listen<ProgressUpdate>("progress_update", (event) => {

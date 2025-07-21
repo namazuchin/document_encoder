@@ -14,7 +14,7 @@ use crate::gemini::{
     upload_to_gemini_with_progress,
 };
 use crate::types::{AppSettings, ProgressUpdate, PromptPreset, VideoFile};
-use crate::video::{encode_video_if_needed, split_video_if_needed};
+use crate::video::{check_ffmpeg_availability, encode_video_if_needed, split_video_if_needed};
 
 #[tauri::command]
 async fn generate_document(
@@ -792,6 +792,14 @@ async fn export_prompt_presets_to_file(
     }
 }
 
+#[tauri::command]
+async fn check_ffmpeg_installed() -> Result<bool, String> {
+    match check_ffmpeg_availability() {
+        Ok(()) => Ok(true),
+        Err(_) => Ok(false),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -807,7 +815,8 @@ pub fn run() {
             load_prompt_presets,
             save_prompt_presets,
             import_prompt_presets_from_file,
-            export_prompt_presets_to_file
+            export_prompt_presets_to_file,
+            check_ffmpeg_installed
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

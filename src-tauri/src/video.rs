@@ -17,7 +17,7 @@ pub struct VideoResolution {
 }
 // Removed deprecated tauri::api::process::Command import
 
-fn find_executable(name: &str) -> Result<PathBuf> {
+pub fn find_executable(name: &str) -> Result<PathBuf> {
     // First, check common paths for Homebrew and system installations
     let common_paths = [
         "/opt/homebrew/bin",      // Homebrew on Apple Silicon
@@ -619,4 +619,24 @@ pub async fn get_best_hardware_encoder() -> Option<String> {
     }
     
     None
+}
+
+/// Checks if both ffmpeg and ffprobe are available on the system
+pub fn check_ffmpeg_availability() -> Result<()> {
+    debug!("Checking ffmpeg availability");
+    
+    // Check ffmpeg
+    if let Err(e) = find_executable("ffmpeg") {
+        debug!("ffmpeg not found: {}", e);
+        return Err(anyhow!("ffmpeg not found: {}", e));
+    }
+    
+    // Check ffprobe
+    if let Err(e) = find_executable("ffprobe") {
+        debug!("ffprobe not found: {}", e);
+        return Err(anyhow!("ffprobe not found: {}", e));
+    }
+    
+    debug!("Both ffmpeg and ffprobe are available");
+    Ok(())
 }
