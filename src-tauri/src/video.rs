@@ -2,6 +2,9 @@ use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::io::{BufRead, BufReader};
 
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
 use anyhow::{anyhow, Result};
 use log::debug;
 
@@ -56,19 +59,23 @@ pub async fn get_video_resolution(video_path: &str) -> Result<VideoResolution> {
     debug!("Getting video resolution for: {}", video_path);
     let ffprobe_path = find_executable("ffprobe")?;
 
-    let output = Command::new(&ffprobe_path)
-        .args([
-            "-v",
-            "error",
-            "-select_streams",
-            "v:0",
-            "-show_entries",
-            "stream=width,height",
-            "-of",
-            "csv=s=x:p=0",
-            video_path,
-        ])
-        .output()?;
+    let mut command = Command::new(&ffprobe_path);
+    command.args([
+        "-v",
+        "error",
+        "-select_streams",
+        "v:0",
+        "-show_entries",
+        "stream=width,height",
+        "-of",
+        "csv=s=x:p=0",
+        video_path,
+    ]);
+
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let output = command.output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -99,17 +106,21 @@ pub async fn get_video_duration(video_path: &str) -> Result<f64> {
     debug!("Getting video duration for: {}", video_path);
     let ffprobe_path = find_executable("ffprobe")?;
 
-    let output = Command::new(&ffprobe_path)
-        .args([
-            "-v",
-            "error",
-            "-show_entries",
-            "format=duration",
-            "-of",
-            "default=noprint_wrappers=1:nokey=1",
-            video_path,
-        ])
-        .output()?;
+    let mut command = Command::new(&ffprobe_path);
+    command.args([
+        "-v",
+        "error",
+        "-show_entries",
+        "format=duration",
+        "-of",
+        "default=noprint_wrappers=1:nokey=1",
+        video_path,
+    ]);
+
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let output = command.output()?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -153,21 +164,25 @@ pub async fn split_video_if_needed(video_path: &Path) -> Result<Vec<PathBuf>> {
         );
         let segment_path = video_path.parent().unwrap().join(&segment_filename);
 
-        let status = Command::new(&ffmpeg_path)
-            .args([
-                "-i",
-                video_path.to_str().unwrap(),
-                "-ss",
-                &current_pos.to_string(),
-                "-t",
-                "3600",
-                "-c",
-                "copy",
-                segment_path.to_str().unwrap(),
-            ])
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .status()?;
+        let mut command = Command::new(&ffmpeg_path);
+        command.args([
+            "-i",
+            video_path.to_str().unwrap(),
+            "-ss",
+            &current_pos.to_string(),
+            "-t",
+            "3600",
+            "-c",
+            "copy",
+            segment_path.to_str().unwrap(),
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped());
+
+        #[cfg(target_os = "windows")]
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        let status = command.status()?;
 
         if !status.success() {
             return Err(anyhow!("ffmpeg split failed for segment {}", segment_index));
@@ -194,22 +209,26 @@ pub async fn extract_frame_from_video(
     
     // 最適化: -ss を -i の前に配置することで高速化（入力シーク）
     // この方法は420倍以上高速になる場合がある
-    let status = Command::new(&ffmpeg_path)
-        .args([
-            "-ss",
-            &timestamp.to_string(),
-            "-i",
-            video_path,
-            "-vframes",
-            "1",
-            "-q:v",
-            "2",
-            "-y",
-            output_path,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .status()?;
+    let mut command = Command::new(&ffmpeg_path);
+    command.args([
+        "-ss",
+        &timestamp.to_string(),
+        "-i",
+        video_path,
+        "-vframes",
+        "1",
+        "-q:v",
+        "2",
+        "-y",
+        output_path,
+    ])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let status = command.status()?;
     
     if !status.success() {
         return Err(anyhow!("Failed to extract frame from video at timestamp {}s", timestamp));
@@ -262,11 +281,15 @@ pub async fn extract_multiple_frames_from_video(
         args.push("-y".to_string());
         
         debug!("Executing ffmpeg command for multiple frames: {:?} {:?}", ffmpeg_path, args);
-        let status = Command::new(&ffmpeg_path)
-            .args(args)
+        let mut command = Command::new(&ffmpeg_path);
+        command.args(args)
             .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .status()?;
+            .stderr(Stdio::piped());
+
+        #[cfg(target_os = "windows")]
+        command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+        let status = command.status()?;
         
         if !status.success() {
             return Err(anyhow!("Failed to extract multiple frames from video"));
@@ -298,26 +321,30 @@ pub async fn extract_frame_fast(
     // - キーフレームシーク（-seek2any 0）でキーフレームのみを探す
     // - 1フレームのみ抽出（-vframes 1）
     // - フォーマット指定でヘッダー解析を最小化
-    let status = Command::new(&ffmpeg_path)
-        .args([
-            "-ss",
-            &timestamp.to_string(),
-            "-i",
-            video_path,
-            "-vframes",
-            "1",
-            "-q:v",
-            "2",
-            "-f",
-            "image2",
-            "-seek2any",
-            "0",
-            "-y",
-            output_path,
-        ])
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .status()?;
+    let mut command = Command::new(&ffmpeg_path);
+    command.args([
+        "-ss",
+        &timestamp.to_string(),
+        "-i",
+        video_path,
+        "-vframes",
+        "1",
+        "-q:v",
+        "2",
+        "-f",
+        "image2",
+        "-seek2any",
+        "0",
+        "-y",
+        output_path,
+    ])
+    .stdout(Stdio::piped())
+    .stderr(Stdio::piped());
+
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let status = command.status()?;
     
     if !status.success() {
         return Err(anyhow!("Failed to fast extract frame from video at timestamp {}s", timestamp));
@@ -438,11 +465,15 @@ where
     ]);
     
     debug!("Executing ffmpeg command: {:?} {:?}", ffmpeg_path, args);
-    let mut command = Command::new(&ffmpeg_path)
-        .args(args)
+    let mut command_builder = Command::new(&ffmpeg_path);
+    command_builder.args(args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::piped())
-        .spawn()?;
+        .stderr(Stdio::piped());
+
+    #[cfg(target_os = "windows")]
+    command_builder.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let mut command = command_builder.spawn()?;
     
     // Monitor progress and capture stderr
     let mut stderr_output = String::new();
@@ -520,16 +551,20 @@ async fn test_hardware_encoder(encoder: &str) -> Result<()> {
     let ffmpeg_path = find_executable("ffmpeg")?;
     
     // Create a simple test: generate a small test video and try to encode it
-    let output = Command::new(&ffmpeg_path)
-        .args([
-            "-f", "lavfi",
-            "-i", "testsrc=duration=1:size=320x240:rate=30",
-            "-c:v", encoder,
-            "-t", "1",
-            "-f", "null",
-            "-",
-        ])
-        .output()?;
+    let mut command = Command::new(&ffmpeg_path);
+    command.args([
+        "-f", "lavfi",
+        "-i", "testsrc=duration=1:size=320x240:rate=30",
+        "-c:v", encoder,
+        "-t", "1",
+        "-f", "null",
+        "-",
+    ]);
+
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let output = command.output()?;
     
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -549,10 +584,13 @@ pub async fn get_best_hardware_encoder() -> Option<String> {
     };
     
     // Get list of available encoders
-    let output = match Command::new(&ffmpeg_path)
-        .args(["-encoders"])
-        .output()
-    {
+    let mut command = Command::new(&ffmpeg_path);
+    command.args(["-encoders"]);
+
+    #[cfg(target_os = "windows")]
+    command.creation_flags(0x08000000); // CREATE_NO_WINDOW
+
+    let output = match command.output() {
         Ok(output) => output,
         Err(_) => return None,
     };
