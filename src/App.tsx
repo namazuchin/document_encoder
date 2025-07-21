@@ -5,10 +5,13 @@ import "./App.css";
 import { VideoFile, AppSettings, PromptPreset, ProgressUpdate } from './types';
 import { generateFilename, getDirectoryFromPath } from './utils/fileUtils';
 import { useLogger } from './hooks/useLogger';
-import ApiSettings from './components/ApiSettings';
+import Settings from './components/Settings';
 import PromptSettings from './components/PromptSettings';
 import PresetEditModal from './components/PresetEditModal';
 import MainDashboard from './components/MainDashboard';
+import LicenseDisplay from './components/LicenseDisplay';
+
+type Page = 'main' | 'settings' | 'promptSettings' | 'licenses';
 
 function App() {
   const [selectedFiles, setSelectedFiles] = useState<VideoFile[]>([]);
@@ -16,11 +19,12 @@ function App() {
     gemini_api_key: "",
     language: "japanese",
     temperature: 0,
-    gemini_model: "gemini-2.5-pro"
+    gemini_model: "gemini-2.5-pro",
+    image_embed_frequency: "moderate"
   });
   const [isProcessing, setIsProcessing] = useState(false);
   const [generatedDocument, setGeneratedDocument] = useState("");
-  const [showSettings, setShowSettings] = useState(false);
+  const [currentPage, setCurrentPage] = useState<Page>('main');
   const [progressMessage, setProgressMessage] = useState("");
   const [progressStep, setProgressStep] = useState(0);
   const [totalSteps, setTotalSteps] = useState(0);
@@ -29,7 +33,6 @@ function App() {
   const [currentPrompt, setCurrentPrompt] = useState<string>("");
   const [promptPresets, setPromptPresets] = useState<PromptPreset[]>([]);
   const [selectedPresetId, setSelectedPresetId] = useState<string>("");
-  const [showPromptSettings, setShowPromptSettings] = useState(false);
   const [editingPreset, setEditingPreset] = useState<PromptPreset | null>(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [newPresetName, setNewPresetName] = useState("");
@@ -45,10 +48,10 @@ function App() {
       const directory = await invoke<string | null>("select_save_directory");
       if (directory) {
         setSaveDirectory(directory);
-        addLog(`✅ 保存先ディレクトリを選択: ${directory}`);
+        addLog(`[SUCCESS] 保存先ディレクトリを選択: ${directory}`);
       }
     } catch (error) {
-      addLog(`❌ 保存先ディレクトリ選択エラー: ${error}`);
+      addLog(`[ERROR] 保存先ディレクトリ選択エラー: ${error}`);
       console.error("Error selecting save directory:", error);
     }
   };
@@ -57,10 +60,10 @@ function App() {
     loadSettings();
     loadPromptPresets();
     
-    addLog("🎧 Setting up progress update listener...");
+    addLog("[INFO] Setting up progress update listener...");
     const unsubscribe = listen<ProgressUpdate>("progress_update", (event) => {
       const { message, step, total_steps } = event.payload;
-      addLog(`📊 [FRONTEND] Received progress update: ${step}/${total_steps} - ${message}`);
+      addLog(`[PROGRESS] Received progress update: ${step}/${total_steps} - ${message}`);
       setProgressMessage(message);
       setProgressStep(step);
       setTotalSteps(total_steps);
@@ -72,10 +75,10 @@ function App() {
   }, []);
 
   const handleFileSelect = async () => {
-    addLog("📁 Starting file selection...");
+    addLog("[INFO] Starting file selection...");
     try {
       const files = await invoke<VideoFile[]>("select_video_files");
-      addLog(`✅ Selected ${files.length} files: ${files.map(f => f.name).join(", ")}`);
+      addLog(`[SUCCESS] Selected ${files.length} files: ${files.map(f => f.name).join(", ")}`);
       setSelectedFiles(files);
       
       // 動画ファイルが選択された場合、最初のファイルのディレクトリを保存先として設定
@@ -83,10 +86,10 @@ function App() {
         const firstFilePath = files[0].path;
         const directoryPath = getDirectoryFromPath(firstFilePath);
         setSaveDirectory(directoryPath);
-        addLog(`📁 保存先を動画ディレクトリに設定: ${directoryPath}`);
+        addLog(`[INFO] 保存先を動画ディレクトリに設定: ${directoryPath}`);
       }
     } catch (error) {
-      addLog(`❌ Error selecting files: ${error}`);
+      addLog(`[ERROR] Error selecting files: ${error}`);
       console.error("Error selecting files:", error);
     }
   };
@@ -98,51 +101,51 @@ function App() {
     // すべてのファイルが削除された場合、保存先ディレクトリもクリア
     if (newFiles.length === 0) {
       setSaveDirectory("");
-      addLog("📁 すべてのファイルが削除されたため、保存先ディレクトリをクリアしました");
+      addLog("[INFO] すべてのファイルが削除されたため、保存先ディレクトリをクリアしました");
     } else if (newFiles.length > 0 && newFiles[0].path) {
       // 残りのファイルの最初のファイルのディレクトリを保存先として設定
       const firstFilePath = newFiles[0].path;
       const directoryPath = getDirectoryFromPath(firstFilePath);
       setSaveDirectory(directoryPath);
-      addLog(`📁 保存先を更新: ${directoryPath}`);
+      addLog(`[INFO] 保存先を更新: ${directoryPath}`);
     }
   };
 
   const handleGenerateDocument = async () => {
-    addLog("🚀 Starting document generation process");
+    addLog("[START] Starting document generation process");
     
     if (selectedFiles.length === 0) {
-      addLog("❌ No video files selected");
+      addLog("[ERROR] No video files selected");
       return;
     }
     
     if (!settings.gemini_api_key) {
-      addLog("❌ Gemini API key is not set");
+      addLog("[ERROR] Gemini API key is not set");
       return;
     }
 
     let currentSaveDirectory = saveDirectory;
     if (!currentSaveDirectory) {
-      addLog("📁 保存先ディレクトリを選択してください");
+      addLog("[INFO] 保存先ディレクトリを選択してください");
       try {
         const directory = await invoke<string | null>("select_save_directory");
         if (directory) {
           currentSaveDirectory = directory;
           setSaveDirectory(directory);
-          addLog(`✅ 保存先ディレクトリを選択: ${directory}`);
+          addLog(`[SUCCESS] 保存先ディレクトリを選択: ${directory}`);
         } else {
-          addLog("❌ 保存先ディレクトリが選択されていないため処理を中止します");
+          addLog("[ERROR] 保存先ディレクトリが選択されていないため処理を中止します");
           return;
         }
       } catch (error) {
-        addLog(`❌ 保存先ディレクトリ選択エラー: ${error}`);
+        addLog(`[ERROR] 保存先ディレクトリ選択エラー: ${error}`);
         return;
       }
     }
 
     const filename = generateFilename(selectedFiles);
-    addLog(`📝 生成予定ファイル名: ${filename}`);
-    addLog(`📁 保存先: ${currentSaveDirectory}`);
+    addLog(`[INFO] 生成予定ファイル名: ${filename}`);
+    addLog(`[INFO] 保存先: ${currentSaveDirectory}`);
 
     setIsProcessing(true);
     setProgressMessage("処理を開始しています...");
@@ -156,9 +159,10 @@ function App() {
         settings: {
           ...settings,
           custom_prompt: currentPrompt || undefined
-        }
+        },
+        saveDirectory: currentSaveDirectory
       });
-      addLog("✅ Document generation completed successfully");
+      addLog("[SUCCESS] Document generation completed successfully");
       setGeneratedDocument(result);
       setProgressMessage("処理が完了しました！");
 
@@ -168,27 +172,27 @@ function App() {
           savePath: currentSaveDirectory,
           filename: filename
         });
-        addLog(`💾 ドキュメントを自動保存しました: ${savedPath}`);
+        addLog(`[SUCCESS] ドキュメントを自動保存しました: ${savedPath}`);
       } catch (saveError) {
-        addLog(`❌ 自動保存に失敗しました: ${saveError}`);
+        addLog(`[ERROR] 自動保存に失敗しました: ${saveError}`);
       }
     } catch (error) {
-      addLog(`❌ Error generating document: ${error}`);
+      addLog(`[ERROR] Error generating document: ${error}`);
       setProgressMessage("エラーが発生しました。");
       console.error("Error generating document:", error);
     } finally {
       setIsProcessing(false);
-      addLog("🏁 Document generation process finished");
+      addLog("[COMPLETE] Document generation process finished");
     }
   };
 
   const handleSaveSettings = async () => {
     try {
       await invoke("save_settings", { settings });
-      addLog("✅ Settings saved successfully");
-      setShowSettings(false);
+      addLog("[SUCCESS] Settings saved successfully");
+      setCurrentPage('main');
     } catch (error) {
-      addLog(`❌ Error saving settings: ${error}`);
+      addLog(`[ERROR] Error saving settings: ${error}`);
       console.error("Error saving settings:", error);
     }
   };
@@ -202,10 +206,10 @@ function App() {
           savedSettings.gemini_model = "gemini-2.5-pro";
         }
         setSettings(savedSettings);
-        addLog(`✅ Settings loaded successfully`);
+        addLog(`[SUCCESS] Settings loaded successfully`);
       }
     } catch (error) {
-      addLog(`❌ Error loading settings: ${error}`);
+      addLog(`[ERROR] Error loading settings: ${error}`);
       console.error("Error loading settings:", error);
     }
   };
@@ -214,9 +218,9 @@ function App() {
     try {
       const presets = await invoke<PromptPreset[]>("load_prompt_presets");
       setPromptPresets(presets);
-      addLog(`✅ Loaded ${presets.length} prompt presets`);
+      addLog(`[SUCCESS] Loaded ${presets.length} prompt presets`);
     } catch (error) {
-      addLog(`❌ Error loading prompt presets: ${error}`);
+      addLog(`[ERROR] Error loading prompt presets: ${error}`);
       console.error("Error loading prompt presets:", error);
     }
   };
@@ -232,7 +236,7 @@ function App() {
     const preset = promptPresets.find(p => p.id === presetId);
     if (preset) {
       setCurrentPrompt(preset.prompt);
-      addLog(`✅ プロンプトプリセットを選択: ${preset.name}`);
+      addLog(`[SUCCESS] プロンプトプリセットを選択: ${preset.name}`);
     }
   };
 
@@ -270,9 +274,9 @@ function App() {
       const updatedPresets = promptPresets.filter(p => p.id !== deleteTargetId);
       await invoke("save_prompt_presets", { presets: updatedPresets });
       setPromptPresets(updatedPresets);
-      addLog(`✅ プリセットを削除しました`);
+      addLog(`[SUCCESS] プリセットを削除しました`);
     } catch (error) {
-      addLog(`❌ プリセット削除エラー: ${error}`);
+      addLog(`[ERROR] プリセット削除エラー: ${error}`);
       console.error("Error deleting preset:", error);
     } finally {
       setIsDeleting(false);
@@ -323,9 +327,9 @@ function App() {
       setEditingPreset(null);
       setNewPresetName("");
       setNewPresetPrompt("");
-      addLog(`✅ プリセットを保存しました: ${newPresetName}`);
+      addLog(`[SUCCESS] プリセットを保存しました: ${newPresetName}`);
     } catch (error) {
-      addLog(`❌ プリセット保存エラー: ${error}`);
+      addLog(`[ERROR] プリセット保存エラー: ${error}`);
       console.error("Error saving preset:", error);
     }
   };
@@ -334,9 +338,9 @@ function App() {
     try {
       const importedPresets = await invoke<PromptPreset[]>("import_prompt_presets_from_file");
       setPromptPresets(importedPresets);
-      addLog(`✅ XMLファイルから${importedPresets.length}個のプリセットを読み込みました`);
+      addLog(`[SUCCESS] XMLファイルから${importedPresets.length}個のプリセットを読み込みました`);
     } catch (error) {
-      addLog(`❌ XMLファイル読み込みエラー: ${error}`);
+      addLog(`[ERROR] XMLファイル読み込みエラー: ${error}`);
       console.error("Error importing XML:", error);
     }
   };
@@ -346,9 +350,9 @@ function App() {
       // デフォルトプリセットを除外してエクスポート
       const userPresets = promptPresets.filter(preset => !preset.is_default);
       await invoke("export_prompt_presets_to_file", { presets: userPresets });
-      addLog(`✅ ${userPresets.length}個のユーザープリセットをXMLファイルに出力しました`);
+      addLog(`[SUCCESS] ${userPresets.length}個のユーザープリセットをXMLファイルに出力しました`);
     } catch (error) {
-      addLog(`❌ XMLファイル出力エラー: ${error}`);
+      addLog(`[ERROR] XMLファイル出力エラー: ${error}`);
       console.error("Error exporting XML:", error);
     }
   };
@@ -357,92 +361,98 @@ function App() {
     setSettings(newSettings);
     try {
       await invoke("save_settings", { settings: newSettings });
-      addLog(`✅ 設定を更新しました`);
+      addLog(`[SUCCESS] 設定を更新しました`);
     } catch (error) {
-      addLog(`❌ 設定保存エラー: ${error}`);
+      addLog(`[ERROR] 設定保存エラー: ${error}`);
     }
   };
 
-  if (showSettings) {
-    return (
-      <ApiSettings
-        settings={settings}
-        onUpdateSettings={setSettings}
-        onClose={() => setShowSettings(false)}
-        onSave={handleSaveSettings}
-      />
-    );
-  }
+  const renderPage = () => {
+    switch (currentPage) {
+      case 'settings':
+        return (
+          <Settings
+            settings={settings}
+            onUpdateSettings={setSettings}
+            onClose={() => setCurrentPage('main')}
+            onSave={handleSaveSettings}
+            onNavigate={setCurrentPage}
+          />
+        );
+      case 'promptSettings':
+        return (
+          <>
+            <PromptSettings
+              promptPresets={promptPresets}
+              onClose={() => setCurrentPage('main')}
+              onEditPreset={handlePresetEdit}
+              onDeletePreset={handlePresetDeleteRequest}
+              onNewPreset={handleNewPreset}
+              onImportXML={handleImportXML}
+              onExportXML={handleExportXML}
+              isDeleting={isDeleting}
+              showDeleteConfirm={showDeleteConfirm}
+              deleteTargetId={deleteTargetId}
+              onConfirmDelete={handleConfirmDelete}
+              onCancelDelete={handleCancelDelete}
+            />
+            <PresetEditModal
+              isOpen={showEditModal}
+              editingPreset={editingPreset}
+              presetName={newPresetName}
+              presetPrompt={newPresetPrompt}
+              onNameChange={setNewPresetName}
+              onPromptChange={setNewPresetPrompt}
+              onSave={handleSavePreset}
+              onClose={() => setShowEditModal(false)}
+            />
+          </>
+        );
+      case 'licenses':
+        return <LicenseDisplay onBack={() => setCurrentPage('settings')} />;
+      case 'main':
+      default:
+        return (
+          <MainDashboard
+            settings={settings}
+            onUpdateSettings={handleUpdateSettingsWithSave}
+            selectedFiles={selectedFiles}
+            onFileSelect={handleFileSelect}
+            onRemoveFile={handleRemoveFile}
+            currentPrompt={currentPrompt}
+            onPromptChange={(prompt) => {
+              setCurrentPrompt(prompt);
+              if (selectedPresetId) {
+                const selectedPreset = promptPresets.find(p => p.id === selectedPresetId);
+                if (selectedPreset && selectedPreset.prompt !== prompt) {
+                  setSelectedPresetId("");
+                }
+              }
+            }}
+            promptPresets={promptPresets}
+            selectedPresetId={selectedPresetId}
+            onPromptPresetSelect={handlePromptPresetSelect}
+            saveDirectory={saveDirectory}
+            onSelectSaveDirectory={handleSelectSaveDirectory}
+            onGenerateDocument={handleGenerateDocument}
+            isProcessing={isProcessing}
+            progressMessage={progressMessage}
+            progressStep={progressStep}
+            totalSteps={totalSteps}
+            logs={logs}
+            showLogs={showLogs}
+            onToggleLogs={() => setShowLogs(!showLogs)}
+            onClearLogs={clearLogs}
+            generatedDocument={generatedDocument}
+            onShowSettings={() => setCurrentPage('settings')}
+            onShowPromptSettings={() => setCurrentPage('promptSettings')}
+            generateFilename={generateFilename}
+          />
+        );
+    }
+  };
 
-  if (showPromptSettings) {
-    return (
-      <>
-        <PromptSettings
-          promptPresets={promptPresets}
-          onClose={() => setShowPromptSettings(false)}
-          onEditPreset={handlePresetEdit}
-          onDeletePreset={handlePresetDeleteRequest}
-          onNewPreset={handleNewPreset}
-          onImportXML={handleImportXML}
-          onExportXML={handleExportXML}
-          isDeleting={isDeleting}
-          showDeleteConfirm={showDeleteConfirm}
-          deleteTargetId={deleteTargetId}
-          onConfirmDelete={handleConfirmDelete}
-          onCancelDelete={handleCancelDelete}
-        />
-        <PresetEditModal
-          isOpen={showEditModal}
-          editingPreset={editingPreset}
-          presetName={newPresetName}
-          presetPrompt={newPresetPrompt}
-          onNameChange={setNewPresetName}
-          onPromptChange={setNewPresetPrompt}
-          onSave={handleSavePreset}
-          onClose={() => setShowEditModal(false)}
-        />
-      </>
-    );
-  }
-
-  return (
-    <MainDashboard
-      settings={settings}
-      onUpdateSettings={handleUpdateSettingsWithSave}
-      selectedFiles={selectedFiles}
-      onFileSelect={handleFileSelect}
-      onRemoveFile={handleRemoveFile}
-      currentPrompt={currentPrompt}
-      onPromptChange={(prompt) => {
-        setCurrentPrompt(prompt);
-        // プロンプトが手動で編集された場合、プリセット選択をリセット
-        if (selectedPresetId) {
-          const selectedPreset = promptPresets.find(p => p.id === selectedPresetId);
-          if (selectedPreset && selectedPreset.prompt !== prompt) {
-            setSelectedPresetId("");
-          }
-        }
-      }}
-      promptPresets={promptPresets}
-      selectedPresetId={selectedPresetId}
-      onPromptPresetSelect={handlePromptPresetSelect}
-      saveDirectory={saveDirectory}
-      onSelectSaveDirectory={handleSelectSaveDirectory}
-      onGenerateDocument={handleGenerateDocument}
-      isProcessing={isProcessing}
-      progressMessage={progressMessage}
-      progressStep={progressStep}
-      totalSteps={totalSteps}
-      logs={logs}
-      showLogs={showLogs}
-      onToggleLogs={() => setShowLogs(!showLogs)}
-      onClearLogs={clearLogs}
-      generatedDocument={generatedDocument}
-      onShowSettings={() => setShowSettings(true)}
-      onShowPromptSettings={() => setShowPromptSettings(true)}
-      generateFilename={generateFilename}
-    />
-  );
+  return <div className="App">{renderPage()}</div>;
 }
 
 export default App;

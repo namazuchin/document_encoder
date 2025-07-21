@@ -3,47 +3,34 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use tauri::{Emitter, Manager};
 
+mod file;
 mod gemini;
 mod types;
-mod file;
 mod video;
 
+use crate::file::{save_document_to_file, select_save_directory, select_video_files};
 use crate::gemini::{
+    generate_with_gemini_with_progress, integrate_documents, process_document_with_images,
     upload_to_gemini_with_progress,
-    generate_with_gemini_with_progress,
-    integrate_documents,
 };
-use crate::types::{
-    VideoFile, AppSettings, ProgressUpdate, PromptPreset,
-};
-use crate::file::{
-    select_video_files,
-    select_save_directory,
-    save_document_to_file,
-};
-use crate::video::{
-    split_video_if_needed,
-};
-
-
+use crate::types::{AppSettings, ProgressUpdate, PromptPreset, VideoFile};
+use crate::video::{encode_video_if_needed, split_video_if_needed};
 
 #[tauri::command]
 async fn generate_document(
     files: Vec<VideoFile>,
     settings: AppSettings,
+    save_directory: String,
     app: tauri::AppHandle,
 ) -> Result<String, String> {
     println!(
         "🚀 [BACKEND] Starting generate_document with {} files",
         files.len()
     );
-    println!(
-        "📋 [BACKEND] Settings: language={}",
-        settings.language
-    );
+    println!("📋 [BACKEND] Settings: language={}", settings.language);
 
     // Calculate total steps for progress tracking
-    let total_steps = files.len() * 3 + if files.len() > 1 { 1 } else { 0 }; // Split, Upload, Generate per file + Integration
+    let total_steps = files.len() * 4 + if files.len() > 1 { 1 } else { 0 }; // Split, Encode, Upload, Generate per file + Integration
     let mut current_step = 0;
 
     // Helper function to emit progress
@@ -72,7 +59,7 @@ async fn generate_document(
     );
 
     // Process files and split if necessary
-    let mut processed_files = Vec::new();
+    let mut split_files = Vec::new();
 
     for (index, file) in files.iter().enumerate() {
         current_step += 1;
@@ -81,7 +68,7 @@ async fn generate_document(
             current_step,
             total_steps,
             format!(
-                "ファイル処理中 ({}/{}): {}",
+                "ファイル分割処理中 ({}/{}): {}",
                 index + 1,
                 files.len(),
                 file.name
@@ -99,16 +86,90 @@ async fn generate_document(
                 if segments.len() > 1 {
                     println!("✂️ [BACKEND] Video split into {} segments", segments.len());
                     for segment in segments {
-                        processed_files.push(segment);
+                        split_files.push(segment);
                     }
                 } else {
                     println!("✅ [BACKEND] Video is under 1 hour, no splitting needed");
-                    processed_files.push(PathBuf::from(&file.path));
+                    split_files.push(PathBuf::from(&file.path));
                 }
             }
             Err(e) => {
                 println!("❌ [BACKEND] Failed to process file {}: {}", file.name, e);
                 return Err(format!("Failed to process file {}: {}", file.name, e));
+            }
+        }
+    }
+
+    // Encode videos if needed
+    let mut processed_files = Vec::new();
+    let output_dir = Path::new(&save_directory);
+
+    for (index, file_path) in split_files.iter().enumerate() {
+        current_step += 1;
+        let file_name = file_path
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("不明なファイル");
+
+        emit_progress(
+            &app,
+            current_step,
+            total_steps,
+            format!(
+                "動画品質処理中 ({}/{}): {}",
+                index + 1,
+                split_files.len(),
+                file_name
+            ),
+        );
+
+        println!(
+            "🎞️ [BACKEND] Encoding video {}/{}: {}",
+            index + 1,
+            split_files.len(),
+            file_path.display()
+        );
+
+        // Create progress callback for encoding
+        let app_clone = app.clone();
+        let progress_callback = move |message: String| {
+            let progress = ProgressUpdate {
+                message,
+                step: current_step,
+                total_steps,
+            };
+            if let Err(e) = app_clone.emit("progress_update", &progress) {
+                println!("❌ [EVENT] Failed to emit encoding progress: {}", e);
+            }
+        };
+
+        match encode_video_if_needed(
+            &file_path.to_string_lossy(),
+            &settings.video_quality,
+            output_dir,
+            progress_callback,
+            settings.hardware_encoding,
+        )
+        .await
+        {
+            Ok(encoded_path) => {
+                println!(
+                    "✅ [BACKEND] Video processing completed: {:?}",
+                    encoded_path
+                );
+                processed_files.push(encoded_path);
+            }
+            Err(e) => {
+                println!(
+                    "❌ [BACKEND] Failed to encode video {}: {}",
+                    file_path.display(),
+                    e
+                );
+                return Err(format!(
+                    "Failed to encode video {}: {}",
+                    file_path.display(),
+                    e
+                ));
             }
         }
     }
@@ -158,8 +219,16 @@ async fn generate_document(
                 file_uris.push(uri);
             }
             Err(e) => {
-                println!("❌ [BACKEND] Failed to upload file {}: {}", file_path.display(), e);
-                return Err(format!("Failed to upload file {}: {}", file_path.display(), e));
+                println!(
+                    "❌ [BACKEND] Failed to upload file {}: {}",
+                    file_path.display(),
+                    e
+                );
+                return Err(format!(
+                    "Failed to upload file {}: {}",
+                    file_path.display(),
+                    e
+                ));
             }
         }
     }
@@ -193,6 +262,8 @@ async fn generate_document(
             settings.temperature,
             settings.custom_prompt.as_deref(),
             &settings.gemini_model,
+            settings.embed_images,
+            &settings.image_embed_frequency,
             &app,
             current_step,
             total_steps,
@@ -259,6 +330,49 @@ async fn generate_document(
         documents.into_iter().next().unwrap_or_default()
     };
 
+    // Process images if embed_images is enabled
+    let final_processed_document = if settings.embed_images && !processed_files.is_empty() {
+        emit_progress(
+            &app,
+            total_steps,
+            total_steps,
+            "画像を処理中...".to_string(),
+        );
+
+        // Convert processed files to strings for image processing
+        let video_paths: Vec<String> = processed_files
+            .iter()
+            .map(|p| p.to_string_lossy().to_string())
+            .collect();
+
+        // For image processing, use the user-specified save directory
+        let output_dir = save_directory.clone();
+
+        match process_document_with_images(
+            &final_document,
+            &video_paths,
+            &output_dir,
+            &settings.image_embed_frequency,
+            &settings,
+        )
+        .await
+        {
+            Ok(processed_doc) => {
+                println!("✅ [BACKEND] Successfully processed document with images");
+                processed_doc
+            }
+            Err(e) => {
+                println!(
+                    "⚠️ [BACKEND] Failed to process images, using original document: {}",
+                    e
+                );
+                final_document
+            }
+        }
+    } else {
+        final_document
+    };
+
     emit_progress(
         &app,
         total_steps,
@@ -267,17 +381,10 @@ async fn generate_document(
     );
     println!(
         "🎉 [BACKEND] Document generation completed successfully (final length: {})",
-        final_document.len()
+        final_processed_document.len()
     );
-    Ok(final_document)
+    Ok(final_processed_document)
 }
-
-
-
-
-
-
-
 
 #[tauri::command]
 async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(), String> {
@@ -298,6 +405,12 @@ async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(
         temperature: settings.temperature,
         custom_prompt: settings.custom_prompt,
         gemini_model: settings.gemini_model,
+        embed_images: settings.embed_images,
+        image_embed_frequency: settings.image_embed_frequency,
+        video_quality: settings.video_quality,
+        hardware_encoding: settings.hardware_encoding,
+        enable_experimental_features: settings.enable_experimental_features,
+        frame_extraction_method: settings.frame_extraction_method,
     };
 
     let config_json = serde_json::to_string_pretty(&safe_settings)
@@ -391,7 +504,7 @@ fn get_prompt_presets_file_path(app: &tauri::AppHandle) -> Result<PathBuf, Strin
 #[tauri::command]
 async fn load_prompt_presets(app: tauri::AppHandle) -> Result<Vec<PromptPreset>, String> {
     let presets_path = get_prompt_presets_file_path(&app)?;
-    
+
     if !presets_path.exists() {
         // Create default presets if file doesn't exist
         let default_presets = vec![
@@ -408,7 +521,7 @@ async fn load_prompt_presets(app: tauri::AppHandle) -> Result<Vec<PromptPreset>,
                 is_default: true,
             },
         ];
-        
+
         save_prompt_presets_to_file(&default_presets, &presets_path)?;
         return Ok(default_presets);
     }
@@ -417,26 +530,39 @@ async fn load_prompt_presets(app: tauri::AppHandle) -> Result<Vec<PromptPreset>,
         .map_err(|e| format!("Failed to read presets file: {}", e))?;
 
     let mut loaded_presets = parse_prompt_presets_xml(&content)?;
-    
+
     // Check if default presets exist and restore if missing
-    let _has_default_manual = loaded_presets.iter().any(|p| p.id == "default_manual" && p.is_default);
-    let _has_default_specification = loaded_presets.iter().any(|p| p.id == "default_specification" && p.is_default);
-    
+    let _has_default_manual = loaded_presets
+        .iter()
+        .any(|p| p.id == "default_manual" && p.is_default);
+    let _has_default_specification = loaded_presets
+        .iter()
+        .any(|p| p.id == "default_specification" && p.is_default);
+
     let mut needs_save = false;
-    
+
     // Fix existing default presets that might have is_default=false
     for preset in &mut loaded_presets {
-        if (preset.id == "default_manual" || preset.id == "default_specification") && !preset.is_default {
+        if (preset.id == "default_manual" || preset.id == "default_specification")
+            && !preset.is_default
+        {
             preset.is_default = true;
             needs_save = true;
-            println!("🔧 [PRESETS] Fixed is_default flag for preset: {}", preset.id);
+            println!(
+                "🔧 [PRESETS] Fixed is_default flag for preset: {}",
+                preset.id
+            );
         }
     }
-    
+
     // Re-check after fixing flags
-    let has_default_manual_after_fix = loaded_presets.iter().any(|p| p.id == "default_manual" && p.is_default);
-    let has_default_specification_after_fix = loaded_presets.iter().any(|p| p.id == "default_specification" && p.is_default);
-    
+    let has_default_manual_after_fix = loaded_presets
+        .iter()
+        .any(|p| p.id == "default_manual" && p.is_default);
+    let has_default_specification_after_fix = loaded_presets
+        .iter()
+        .any(|p| p.id == "default_specification" && p.is_default);
+
     if !has_default_manual_after_fix {
         loaded_presets.push(PromptPreset {
             id: "default_manual".to_string(),
@@ -447,7 +573,7 @@ async fn load_prompt_presets(app: tauri::AppHandle) -> Result<Vec<PromptPreset>,
         needs_save = true;
         println!("🔧 [PRESETS] Restored missing default manual preset");
     }
-    
+
     if !has_default_specification_after_fix {
         loaded_presets.push(PromptPreset {
             id: "default_specification".to_string(),
@@ -458,29 +584,39 @@ async fn load_prompt_presets(app: tauri::AppHandle) -> Result<Vec<PromptPreset>,
         needs_save = true;
         println!("🔧 [PRESETS] Restored missing default specification preset");
     }
-    
+
     // Save the restored presets if any were missing
     if needs_save {
         if let Err(e) = save_prompt_presets_to_file(&loaded_presets, &presets_path) {
-            println!("⚠️ [PRESETS] Failed to save restored default presets: {}", e);
+            println!(
+                "⚠️ [PRESETS] Failed to save restored default presets: {}",
+                e
+            );
         } else {
             println!("✅ [PRESETS] Successfully saved restored default presets");
         }
     }
-    
+
     Ok(loaded_presets)
 }
 
 #[tauri::command]
-async fn save_prompt_presets(presets: Vec<PromptPreset>, app: tauri::AppHandle) -> Result<(), String> {
+async fn save_prompt_presets(
+    presets: Vec<PromptPreset>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     let presets_path = get_prompt_presets_file_path(&app)?;
-    
+
     // Check if default presets are being preserved
-    let has_default_manual = presets.iter().any(|p| p.id == "default_manual" && p.is_default);
-    let has_default_specification = presets.iter().any(|p| p.id == "default_specification" && p.is_default);
-    
+    let has_default_manual = presets
+        .iter()
+        .any(|p| p.id == "default_manual" && p.is_default);
+    let has_default_specification = presets
+        .iter()
+        .any(|p| p.id == "default_specification" && p.is_default);
+
     let mut final_presets = presets;
-    
+
     // Ensure default presets are always present
     if !has_default_manual {
         final_presets.push(PromptPreset {
@@ -490,7 +626,7 @@ async fn save_prompt_presets(presets: Vec<PromptPreset>, app: tauri::AppHandle) 
             is_default: true,
         });
     }
-    
+
     if !has_default_specification {
         final_presets.push(PromptPreset {
             id: "default_specification".to_string(),
@@ -499,7 +635,7 @@ async fn save_prompt_presets(presets: Vec<PromptPreset>, app: tauri::AppHandle) 
             is_default: true,
         });
     }
-    
+
     if let Some(parent) = presets_path.parent() {
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create config directory: {}", e))?;
@@ -514,95 +650,103 @@ fn save_prompt_presets_to_file(presets: &[PromptPreset], path: &Path) -> Result<
         fs::create_dir_all(parent)
             .map_err(|e| format!("Failed to create config directory: {}", e))?;
     }
-    
+
     let mut xml_content = String::new();
     xml_content.push_str("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n");
     xml_content.push_str("<prompt_presets>\n");
-    
+
     for preset in presets {
         xml_content.push_str(&format!(
             "  <preset id=\"{}\" is_default=\"{}\">\n    <name>{}</name>\n    <prompt><![CDATA[{}]]></prompt>\n  </preset>\n",
             preset.id, preset.is_default, preset.name, preset.prompt
         ));
     }
-    
+
     xml_content.push_str("</prompt_presets>\n");
-    
-    fs::write(path, xml_content)
-        .map_err(|e| format!("Failed to write presets file: {}", e))?;
-    
+
+    fs::write(path, xml_content).map_err(|e| format!("Failed to write presets file: {}", e))?;
+
     Ok(())
 }
 
 fn parse_prompt_presets_xml(xml_content: &str) -> Result<Vec<PromptPreset>, String> {
     // Simple XML parsing for prompt presets
     let mut presets = Vec::new();
-    
+
     // Find all preset blocks
     let mut current_pos = 0;
     while let Some(start) = xml_content[current_pos..].find("<preset id=\"") {
         let absolute_start = current_pos + start;
         let id_start = absolute_start + 12; // length of "<preset id=\""
-        
+
         if let Some(id_end) = xml_content[id_start..].find("\"") {
             let id = xml_content[id_start..id_start + id_end].to_string();
-            
+
             // Parse is_default attribute
             let mut is_default = false;
             if let Some(is_default_start) = xml_content[absolute_start..].find("is_default=\"") {
                 let is_default_start = absolute_start + is_default_start + 12; // length of "is_default=\""
                 if let Some(is_default_end) = xml_content[is_default_start..].find("\"") {
-                    let is_default_str = &xml_content[is_default_start..is_default_start + is_default_end];
+                    let is_default_str =
+                        &xml_content[is_default_start..is_default_start + is_default_end];
                     is_default = is_default_str == "true";
                 }
             }
-            
+
             // Find name
             if let Some(name_start) = xml_content[absolute_start..].find("<name>") {
                 let name_start = absolute_start + name_start + 6; // length of "<name>"
                 if let Some(name_end) = xml_content[name_start..].find("</name>") {
                     let name = xml_content[name_start..name_start + name_end].to_string();
-                    
+
                     // Find prompt
                     if let Some(prompt_start) = xml_content[absolute_start..].find("<![CDATA[") {
                         let prompt_start = absolute_start + prompt_start + 9; // length of "<![CDATA["
                         if let Some(prompt_end) = xml_content[prompt_start..].find("]]>") {
-                            let prompt = xml_content[prompt_start..prompt_start + prompt_end].to_string();
-                            
-                            presets.push(PromptPreset { id, name, prompt, is_default });
+                            let prompt =
+                                xml_content[prompt_start..prompt_start + prompt_end].to_string();
+
+                            presets.push(PromptPreset {
+                                id,
+                                name,
+                                prompt,
+                                is_default,
+                            });
                         }
                     }
                 }
             }
         }
-        
+
         current_pos = absolute_start + 1;
     }
-    
+
     Ok(presets)
 }
 
 #[tauri::command]
-async fn import_prompt_presets_from_file(app: tauri::AppHandle) -> Result<Vec<PromptPreset>, String> {
+async fn import_prompt_presets_from_file(
+    app: tauri::AppHandle,
+) -> Result<Vec<PromptPreset>, String> {
     use tauri_plugin_dialog::DialogExt;
-    
+
     let file_path = app
         .dialog()
         .file()
         .add_filter("XML files", &["xml"])
         .blocking_pick_file();
-    
+
     match file_path {
         Some(path) => {
             let content = fs::read_to_string(path.as_path().unwrap())
                 .map_err(|e| format!("Failed to read XML file: {}", e))?;
-            
+
             let imported_presets = parse_prompt_presets_xml(&content)?;
-            
+
             // Merge with existing presets and save
             let existing_presets = load_prompt_presets(app.clone()).await?;
             let mut all_presets = existing_presets;
-            
+
             // Add imported presets with unique IDs
             for mut preset in imported_presets {
                 // Generate unique ID if it already exists
@@ -617,7 +761,7 @@ async fn import_prompt_presets_from_file(app: tauri::AppHandle) -> Result<Vec<Pr
                 preset.is_default = false;
                 all_presets.push(preset);
             }
-            
+
             save_prompt_presets(all_presets.clone(), app).await?;
             Ok(all_presets)
         }
@@ -626,16 +770,19 @@ async fn import_prompt_presets_from_file(app: tauri::AppHandle) -> Result<Vec<Pr
 }
 
 #[tauri::command]
-async fn export_prompt_presets_to_file(presets: Vec<PromptPreset>, app: tauri::AppHandle) -> Result<(), String> {
+async fn export_prompt_presets_to_file(
+    presets: Vec<PromptPreset>,
+    app: tauri::AppHandle,
+) -> Result<(), String> {
     use tauri_plugin_dialog::DialogExt;
-    
+
     let file_path = app
         .dialog()
         .file()
         .add_filter("XML files", &["xml"])
         .set_file_name("prompt_presets.xml")
         .blocking_save_file();
-    
+
     match file_path {
         Some(path) => {
             save_prompt_presets_to_file(&presets, path.as_path().unwrap())?;

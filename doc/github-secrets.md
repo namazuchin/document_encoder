@@ -44,7 +44,12 @@ macOSビルドと署名のためにGitHubリポジトリで設定する必要が
 
 8. **GOOGLE_DRIVE_FOLDER_ID**
    - アップロード先のGoogle DriveフォルダID
-   - Google DriveのURLから取得：`https://drive.google.com/drive/folders/[FOLDER_ID]`
+   - **重要**: 共有ドライブ内のフォルダIDを使用してください
+   - 取得方法：
+     1. 共有ドライブに移動
+     2. アップロード先フォルダを開く
+     3. URLから取得：`https://drive.google.com/drive/folders/[FOLDER_ID]`
+     4. `[FOLDER_ID]` 部分をコピー
 
 ## 設定手順
 
@@ -80,7 +85,42 @@ macOSビルドと署名のためにGitHubリポジトリで設定する必要が
 7. 「キー」タブ→「キーを追加」→「新しいキーを作成」
 8. JSON形式を選択してダウンロード
 9. [Google Drive API](https://console.developers.google.com/apis/api/drive.googleapis.com)を有効化
-10. Google Driveでアップロード先フォルダをサービスアカウントのメールアドレスと共有
+
+## 共有ドライブ（Shared Drive）の設定
+
+**重要**: Service Accountは個人ドライブではなく、共有ドライブを使用する必要があります。
+
+1. [Google Drive](https://drive.google.com/)にアクセス
+2. 左メニューから「共有ドライブ」をクリック
+3. 「+ 新規」ボタンをクリックして共有ドライブを作成
+4. 共有ドライブ名を入力（例：「GitHub Actions Builds」）
+5. 作成された共有ドライブをクリック
+6. 右上の「メンバーを管理」をクリック
+7. Service Accountのメールアドレスを追加
+8. 権限を「編集者」または「管理者」に設定
+9. 共有ドライブのURLからフォルダIDを取得：`https://drive.google.com/drive/folders/[FOLDER_ID]`
+
+**注意**: 個人のGoogle Driveフォルダは使用できません。必ず共有ドライブを使用してください。
+
+## Google Drive アップロード機能について
+
+このプロジェクトでは、外部依存を避けるため独自のアップロードスクリプト（`scripts/upload-to-gdrive.js`）を使用しています。このスクリプトは：
+
+- **外部ライブラリ不要**: Node.js標準ライブラリのみを使用
+- **Service Account認証**: JWT生成からアクセストークン取得まで自前実装
+- **ファイル置換対応**: 同名ファイルが存在する場合は自動で更新
+- **エラーハンドリング**: 詳細なログ出力と適切なエラー処理
+
+### スクリプト使用方法
+
+```bash
+node scripts/upload-to-gdrive.js <credentials_base64> <folder_id> <file_path> <upload_name>
+```
+
+- `credentials_base64`: Service AccountのJSONファイルをbase64エンコードしたもの
+- `folder_id`: アップロード先のGoogle DriveフォルダID
+- `file_path`: アップロードするファイルのパス
+- `upload_name`: Google Drive上での表示名
 
 ## トラブルシューティング
 
@@ -90,6 +130,10 @@ macOSビルドと署名のためにGitHubリポジトリで設定する必要が
 - ビルドが失敗する場合は、GitHub Actions のログを詳細に確認
 
 ### Google Drive アップロード関連
-- アップロードエラーが発生する場合は、フォルダの共有設定を確認
+- **403エラー（Storage quota exceeded）**: 個人ドライブではなく共有ドライブを使用してください
+- アップロードエラーが発生する場合は、共有ドライブのメンバー設定を確認
+- Service Accountに「編集者」以上の権限が付与されているか確認
 - 認証エラーの場合は、Service Account JSONファイルのbase64エンコードを確認
 - API制限エラーの場合は、Google Drive APIが有効化されているか確認
+- JWT署名エラーの場合は、Service AccountのPrivate Keyが正しく設定されているか確認
+- ファイルが見つからない場合は、ビルド成果物のパスが正しいか確認

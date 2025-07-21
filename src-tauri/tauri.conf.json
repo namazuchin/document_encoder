@@ -51,6 +51,9 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ],
+    "resources": [
+      "../public/licenses.json"
+    ],
     "macOS": {
       "hardenedRuntime": true,
       "entitlements": "./entitlements.plist",
