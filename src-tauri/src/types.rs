@@ -39,6 +39,21 @@ pub struct VideoFile {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct YouTubeVideoInfo {
+    pub url: String,
+    pub title: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(tag = "type")]
+pub enum VideoSource {
+    #[serde(rename = "local")]
+    Local { files: Vec<VideoFile> },
+    #[serde(rename = "youtube")]
+    YouTube { video: YouTubeVideoInfo },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppSettings {
     pub gemini_api_key: String,
     #[serde(default = "default_language")]

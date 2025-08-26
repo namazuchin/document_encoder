@@ -37,3 +37,12 @@ export interface ProgressUpdate {
   step: number;
   total_steps: number;
 }
+
+export interface YouTubeVideoInfo {
+  url: string;
+  title: string;
+}
+
+export type VideoSource = 
+  | { type: 'local'; files: VideoFile[] }
+  | { type: 'youtube'; video: YouTubeVideoInfo };
