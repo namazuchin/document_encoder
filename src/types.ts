@@ -2,7 +2,6 @@ export interface VideoFile {
   path: string;
   name: string;
   size: number;
-  duration?: number;
 }
 
 export type VideoQuality = "NoConversion" | "1080p" | "720p" | "480p";
@@ -38,12 +37,3 @@ export interface ProgressUpdate {
   step: number;
   total_steps: number;
 }
-
-export interface YouTubeVideoInfo {
-  url: string;
-  title: string;
-}
-
-export type VideoSource = 
-  | { type: 'local'; files: VideoFile[] }
-  | { type: 'youtube'; video: YouTubeVideoInfo };

@@ -1,6 +1,5 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { VideoFile, AppSettings, PromptPreset, VideoQuality, ImageEmbedFrequency, YouTubeVideoInfo, VideoSource } from '../types';
-import { formatFileSize, formatDuration } from '../utils/fileUtils';
+import { VideoFile, AppSettings, PromptPreset, VideoQuality, ImageEmbedFrequency } from '../types';
 import { 
   FaPlay, 
   FaCog, 
@@ -13,8 +12,7 @@ import {
   FaTrash, 
   FaLanguage,
   FaImage,
-  FaVideo,
-  FaYoutube
+  FaVideo
 } from 'react-icons/fa';
 
 interface MainDashboardProps {
@@ -31,7 +29,6 @@ interface MainDashboardProps {
   saveDirectory: string;
   onSelectSaveDirectory: () => void;
   onGenerateDocument: () => void;
-  onGenerateFromYoutube: (youtubeVideo: YouTubeVideoInfo) => void;
   isProcessing: boolean;
   progressMessage: string;
   progressStep: number;
@@ -60,7 +57,6 @@ export default function MainDashboard({
   saveDirectory,
   onSelectSaveDirectory,
   onGenerateDocument,
-  onGenerateFromYoutube,
   isProcessing,
   progressMessage,
   progressStep,
@@ -76,9 +72,6 @@ export default function MainDashboard({
 }: MainDashboardProps) {
   const logContainerRef = useRef<HTMLDivElement>(null);
   const [isAutoScroll, setIsAutoScroll] = useState(true);
-  const [videoSource, setVideoSource] = useState<'local' | 'youtube'>('local');
-  const [youtubeUrl, setYoutubeUrl] = useState('');
-  const [youtubeTitle, setYoutubeTitle] = useState('');
 
   // 自動スクロール機能
   useEffect(() => {
@@ -124,40 +117,6 @@ export default function MainDashboard({
     onUpdateSettings(newSettings);
   };
 
-  const handleYoutubeUrlChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setYoutubeUrl(e.target.value);
-    // Auto-extract title from URL (simple version)
-    if (e.target.value.includes('youtube.com/watch') || e.target.value.includes('youtu.be/')) {
-      const videoId = extractVideoId(e.target.value);
-      if (videoId) {
-        setYoutubeTitle(`YouTube Video ${videoId}`);
-      } else {
-        setYoutubeTitle('YouTube Video');
-      }
-    } else {
-      setYoutubeTitle('');
-    }
-  };
-
-  const extractVideoId = (url: string): string | null => {
-    const regex = /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=)|youtu\.be\/)([^"&?\/\s]{11})/;
-    const match = url.match(regex);
-    return match ? match[1] : null;
-  };
-
-  const handleYoutubeTitleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    setYoutubeTitle(e.target.value);
-  };
-
-  const handleGenerateFromYoutube = () => {
-    if (youtubeUrl && youtubeTitle) {
-      onGenerateFromYoutube({
-        url: youtubeUrl,
-        title: youtubeTitle
-      });
-    }
-  };
-
   return (
     <main className="container">
       <header className="header">
@@ -178,82 +137,6 @@ export default function MainDashboard({
           <div className="settings-panel">
             <h2>設定</h2>
             
-            {/* 動画ソース選択 */}
-            <div className="setting-section">
-              <h3>動画ソース選択</h3>
-              <div className="source-selection">
-                <div className="source-tabs">
-                  <button 
-                    className={`source-tab ${videoSource === 'local' ? 'active' : ''}`}
-                    onClick={() => setVideoSource('local')}
-                  >
-                    <FaFileVideo className="icon" /> ローカルファイル
-                  </button>
-                  <button 
-                    className={`source-tab ${videoSource === 'youtube' ? 'active' : ''}`}
-                    onClick={() => setVideoSource('youtube')}
-                  >
-                    <FaYoutube className="icon" /> YouTube
-                  </button>
-                </div>
-                
-                {videoSource === 'local' && (
-                  <div className="local-file-section">
-                    <button className="file-select-btn" onClick={onFileSelect}>
-                      <FaFileVideo className="icon" /> ファイルを選択
-                    </button>
-                    
-                    {selectedFiles.length > 0 && (
-                      <div className="file-list">
-                        <div className="file-count">選択されたファイル: {selectedFiles.length}件</div>
-                        <div className="file-list-container">
-                          {selectedFiles.map((file, index) => (
-                            <div key={index} className="file-item">
-                              <span className="file-name">{file.name}</span>
-                              <span className="file-info">
-                                ({formatFileSize(file.size)}{file.duration ? `, ${formatDuration(file.duration)}` : ''})
-                              </span>
-                              <button 
-                                className="remove-btn"
-                                onClick={() => onRemoveFile(index)}
-                              >
-                                <FaTimes className="icon" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                {videoSource === 'youtube' && (
-                  <div className="youtube-section">
-                    <div className="youtube-input-group">
-                      <label htmlFor="youtubeUrl">YouTube URL:</label>
-                      <input
-                        type="url"
-                        id="youtubeUrl"
-                        value={youtubeUrl}
-                        onChange={handleYoutubeUrlChange}
-                        placeholder="https://www.youtube.com/watch?v=..."
-                      />
-                    </div>
-                    <div className="youtube-input-group">
-                      <label htmlFor="youtubeTitle">動画タイトル:</label>
-                      <input
-                        type="text"
-                        id="youtubeTitle"
-                        value={youtubeTitle}
-                        onChange={handleYoutubeTitleChange}
-                        placeholder="YouTube動画のタイトルを入力..."
-                      />
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-
             {/* プロンプト設定 */}
             <div className="setting-section">
               <h3>プロンプト設定</h3>
@@ -296,40 +179,38 @@ export default function MainDashboard({
                   </select>
                 </div>
               </div>
-              {videoSource === 'local' && (
-                <div className="image-embed-group">
-                  <h4><FaImage className="icon" /> スクリーンショット埋め込み設定</h4>
-                  <div className="image-embed-controls">
-                    <div className="checkbox-group">
-                      <label className="checkbox-label" htmlFor="embedImages">
-                        <input
-                          type="checkbox"
-                          id="embedImages"
-                          checked={settings.embed_images || false}
-                          onChange={handleEmbedImagesChange}
-                        />
-                        <span className="checkbox-text">
-                          スクリーンショットを埋め込む
-                        </span>
-                      </label>
-                    </div>
-                    {settings.embed_images && (
-                      <div className="frequency-setting">
-                        <label htmlFor="imageEmbedFrequency">埋込頻度:</label>
-                        <select
-                          id="imageEmbedFrequency"
-                          value={settings.image_embed_frequency || 'moderate'}
-                          onChange={handleImageEmbedFrequencyChange}
-                        >
-                          <option value="minimal">少なめ</option>
-                          <option value="moderate">普通</option>
-                          <option value="detailed">多め</option>
-                        </select>
-                      </div>
-                    )}
+              <div className="image-embed-group">
+                <h4><FaImage className="icon" /> スクリーンショット埋め込み設定</h4>
+                <div className="image-embed-controls">
+                  <div className="checkbox-group">
+                    <label className="checkbox-label" htmlFor="embedImages">
+                      <input
+                        type="checkbox"
+                        id="embedImages"
+                        checked={settings.embed_images || false}
+                        onChange={handleEmbedImagesChange}
+                      />
+                      <span className="checkbox-text">
+                        スクリーンショットを埋め込む
+                      </span>
+                    </label>
                   </div>
+                  {settings.embed_images && (
+                    <div className="frequency-setting">
+                      <label htmlFor="imageEmbedFrequency">埋込頻度:</label>
+                      <select
+                        id="imageEmbedFrequency"
+                        value={settings.image_embed_frequency || 'moderate'}
+                        onChange={handleImageEmbedFrequencyChange}
+                      >
+                        <option value="minimal">少なめ</option>
+                        <option value="moderate">普通</option>
+                        <option value="detailed">多め</option>
+                      </select>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
               <div className="prompt-editor">
                 <label htmlFor="promptText">現在のプロンプト:</label>
                 <textarea
@@ -340,6 +221,34 @@ export default function MainDashboard({
                   rows={3}
                 />
               </div>
+            </div>
+
+            {/* ファイル選択 */}
+            <div className="setting-section">
+              <h3>動画ファイル選択</h3>
+              <button className="file-select-btn" onClick={onFileSelect}>
+                <FaFileVideo className="icon" /> ファイルを選択
+              </button>
+              
+              {selectedFiles.length > 0 && (
+                <div className="file-list">
+                  <div className="file-count">選択されたファイル: {selectedFiles.length}件</div>
+                  <div className="file-list-container">
+                    {selectedFiles.map((file, index) => (
+                      <div key={index} className="file-item">
+                        <span className="file-name">{file.name}</span>
+                        <span className="file-size">({formatFileSize(file.size)})</span>
+                        <button 
+                          className="remove-btn"
+                          onClick={() => onRemoveFile(index)}
+                        >
+                          <FaTimes className="icon" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </div>
 
             {/* 保存設定 */}
@@ -353,11 +262,7 @@ export default function MainDashboard({
                   保存先: {saveDirectory || "未選択"}
                 </div>
                 <div className="filename-preview">
-                  生成ファイル名: {
-                    videoSource === 'local' 
-                      ? (selectedFiles.length > 0 ? generateFilename(selectedFiles) : "ファイルが選択されていません")
-                      : (youtubeTitle ? `${youtubeTitle.replace(/\s/g, '_')}.md` : "YouTubeタイトルが設定されていません")
-                  }
+                  生成ファイル名: {selectedFiles.length > 0 ? generateFilename(selectedFiles) : "ファイルが選択されていません"}
                 </div>
               </div>
             </div>
@@ -366,8 +271,8 @@ export default function MainDashboard({
             <div className="setting-section">
               <button 
                 className="generate-btn"
-                onClick={videoSource === 'local' ? onGenerateDocument : handleGenerateFromYoutube}
-                disabled={isProcessing || (videoSource === 'local' ? selectedFiles.length === 0 : !youtubeUrl || !youtubeTitle)}
+                onClick={onGenerateDocument}
+                disabled={isProcessing || selectedFiles.length === 0}
               >
                 <FaPlay className="icon" /> {isProcessing ? "処理中..." : "ドキュメント生成"}
               </button>
