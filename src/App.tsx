@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
-import { VideoFile, AppSettings, PromptPreset, ProgressUpdate } from './types';
+import { VideoFile, AppSettings, PromptPreset, ProgressUpdate, YouTubeVideoInfo } from './types';
 import { generateFilename, getDirectoryFromPath } from './utils/fileUtils';
 import { useLogger } from './hooks/useLogger';
 import Settings from './components/Settings';
@@ -79,7 +79,23 @@ function App() {
     try {
       const files = await invoke<VideoFile[]>("select_video_files");
       addLog(`[SUCCESS] Selected ${files.length} files: ${files.map(f => f.name).join(", ")}`);
-      setSelectedFiles(files);
+      
+      // 各ファイルの動画尺を取得
+      addLog("[INFO] Getting video duration for selected files...");
+      const filesWithDuration = await Promise.all(
+        files.map(async (file) => {
+          try {
+            const duration = await invoke<number>("get_video_duration", { videoPath: file.path });
+            addLog(`[SUCCESS] Duration for ${file.name}: ${Math.floor(duration)}s`);
+            return { ...file, duration };
+          } catch (error) {
+            addLog(`[WARNING] Failed to get duration for ${file.name}: ${error}`);
+            return file; // durationなしで返す
+          }
+        })
+      );
+      
+      setSelectedFiles(filesWithDuration);
       
       // 動画ファイルが選択された場合、最初のファイルのディレクトリを保存先として設定
       if (files.length > 0 && files[0].path) {
@@ -183,6 +199,68 @@ function App() {
     } finally {
       setIsProcessing(false);
       addLog("[COMPLETE] Document generation process finished");
+    }
+  };
+
+  const handleGenerateFromYoutube = async (youtubeVideo: YouTubeVideoInfo) => {
+    addLog(`[START] Starting YouTube document generation for: ${youtubeVideo.url}`);
+    
+    if (!settings.gemini_api_key) {
+      addLog("[ERROR] Gemini API key is not set");
+      return;
+    }
+
+    let currentSaveDirectory = saveDirectory;
+    if (!currentSaveDirectory) {
+      addLog("[INFO] 保存先ディレクトリを選択してください");
+      try {
+        const directory = await invoke<string | null>("select_save_directory");
+        if (directory) {
+          currentSaveDirectory = directory;
+          setSaveDirectory(directory);
+          addLog(`[SUCCESS] 保存先ディレクトリを選択: ${directory}`);
+        } else {
+          addLog("[ERROR] 保存先ディレクトリが選択されていないため処理を中止します");
+          return;
+        }
+      } catch (error) {
+        addLog(`[ERROR] 保存先ディレクトリ選択エラー: ${error}`);
+        return;
+      }
+    }
+
+    const filename = `${youtubeVideo.title.replace(/\s/g, '_')}.md`;
+    addLog(`[INFO] 生成予定ファイル名: ${filename}`);
+    addLog(`[INFO] 保存先: ${currentSaveDirectory}`);
+
+    setIsProcessing(true);
+    setProgressMessage("YouTube動画の処理を開始しています...");
+    setProgressStep(0);
+    setTotalSteps(1);
+    setShowLogs(true);
+    
+    try {
+      const result = await invoke<string>("generate_document_from_youtube", {
+        youtubeVideo,
+        settings: {
+          ...settings,
+          custom_prompt: currentPrompt || undefined,
+        },
+        saveDirectory: currentSaveDirectory,
+        customPrompt: currentPrompt || null,
+      });
+      
+      setGeneratedDocument(result);
+      setProgressMessage("YouTube動画からのドキュメント生成が完了しました！");
+      setProgressStep(1);
+      addLog(`[SUCCESS] Document generated from YouTube video: ${youtubeVideo.title}`);
+    } catch (error) {
+      addLog(`[ERROR] Error generating document from YouTube: ${error}`);
+      setProgressMessage("エラーが発生しました。");
+      console.error("Error generating document from YouTube:", error);
+    } finally {
+      setIsProcessing(false);
+      addLog("[COMPLETE] YouTube document generation process finished");
     }
   };
 
@@ -435,6 +513,7 @@ function App() {
             saveDirectory={saveDirectory}
             onSelectSaveDirectory={handleSelectSaveDirectory}
             onGenerateDocument={handleGenerateDocument}
+            onGenerateFromYoutube={handleGenerateFromYoutube}
             isProcessing={isProcessing}
             progressMessage={progressMessage}
             progressStep={progressStep}

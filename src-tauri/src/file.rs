@@ -42,6 +42,7 @@ pub async fn select_video_files(app: tauri::AppHandle) -> Result<Vec<VideoFile>,
                         path: path_str,
                         name: file_name,
                         size: metadata.len(),
+                        duration: None,
                     });
                 }
             }
