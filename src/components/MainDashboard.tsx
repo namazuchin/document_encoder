@@ -177,6 +177,80 @@ export default function MainDashboard({
           <div className="settings-panel">
             <h2>設定</h2>
             
+            {/* 動画ソース選択 */}
+            <div className="setting-section">
+              <h3>動画ソース選択</h3>
+              <div className="source-selection">
+                <div className="source-tabs">
+                  <button 
+                    className={`source-tab ${videoSource === 'local' ? 'active' : ''}`}
+                    onClick={() => setVideoSource('local')}
+                  >
+                    <FaFileVideo className="icon" /> ローカルファイル
+                  </button>
+                  <button 
+                    className={`source-tab ${videoSource === 'youtube' ? 'active' : ''}`}
+                    onClick={() => setVideoSource('youtube')}
+                  >
+                    <FaYoutube className="icon" /> YouTube
+                  </button>
+                </div>
+                
+                {videoSource === 'local' && (
+                  <div className="local-file-section">
+                    <button className="file-select-btn" onClick={onFileSelect}>
+                      <FaFileVideo className="icon" /> ファイルを選択
+                    </button>
+                    
+                    {selectedFiles.length > 0 && (
+                      <div className="file-list">
+                        <div className="file-count">選択されたファイル: {selectedFiles.length}件</div>
+                        <div className="file-list-container">
+                          {selectedFiles.map((file, index) => (
+                            <div key={index} className="file-item">
+                              <span className="file-name">{file.name}</span>
+                              <span className="file-size">({formatFileSize(file.size)})</span>
+                              <button 
+                                className="remove-btn"
+                                onClick={() => onRemoveFile(index)}
+                              >
+                                <FaTimes className="icon" />
+                              </button>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+                
+                {videoSource === 'youtube' && (
+                  <div className="youtube-section">
+                    <div className="youtube-input-group">
+                      <label htmlFor="youtubeUrl">YouTube URL:</label>
+                      <input
+                        type="url"
+                        id="youtubeUrl"
+                        value={youtubeUrl}
+                        onChange={handleYoutubeUrlChange}
+                        placeholder="https://www.youtube.com/watch?v=..."
+                      />
+                    </div>
+                    <div className="youtube-input-group">
+                      <label htmlFor="youtubeTitle">動画タイトル:</label>
+                      <input
+                        type="text"
+                        id="youtubeTitle"
+                        value={youtubeTitle}
+                        onChange={handleYoutubeTitleChange}
+                        placeholder="YouTube動画のタイトルを入力..."
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+
             {/* プロンプト設定 */}
             <div className="setting-section">
               <h3>プロンプト設定</h3>
@@ -262,80 +336,6 @@ export default function MainDashboard({
                   placeholder="プロンプトを入力してください..."
                   rows={3}
                 />
-              </div>
-            </div>
-
-            {/* 動画ソース選択 */}
-            <div className="setting-section">
-              <h3>動画ソース選択</h3>
-              <div className="source-selection">
-                <div className="source-tabs">
-                  <button 
-                    className={`source-tab ${videoSource === 'local' ? 'active' : ''}`}
-                    onClick={() => setVideoSource('local')}
-                  >
-                    <FaFileVideo className="icon" /> ローカルファイル
-                  </button>
-                  <button 
-                    className={`source-tab ${videoSource === 'youtube' ? 'active' : ''}`}
-                    onClick={() => setVideoSource('youtube')}
-                  >
-                    <FaYoutube className="icon" /> YouTube
-                  </button>
-                </div>
-                
-                {videoSource === 'local' && (
-                  <div className="local-file-section">
-                    <button className="file-select-btn" onClick={onFileSelect}>
-                      <FaFileVideo className="icon" /> ファイルを選択
-                    </button>
-                    
-                    {selectedFiles.length > 0 && (
-                      <div className="file-list">
-                        <div className="file-count">選択されたファイル: {selectedFiles.length}件</div>
-                        <div className="file-list-container">
-                          {selectedFiles.map((file, index) => (
-                            <div key={index} className="file-item">
-                              <span className="file-name">{file.name}</span>
-                              <span className="file-size">({formatFileSize(file.size)})</span>
-                              <button 
-                                className="remove-btn"
-                                onClick={() => onRemoveFile(index)}
-                              >
-                                <FaTimes className="icon" />
-                              </button>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                )}
-                
-                {videoSource === 'youtube' && (
-                  <div className="youtube-section">
-                    <div className="youtube-input-group">
-                      <label htmlFor="youtubeUrl">YouTube URL:</label>
-                      <input
-                        type="url"
-                        id="youtubeUrl"
-                        value={youtubeUrl}
-                        onChange={handleYoutubeUrlChange}
-                        placeholder="https://www.youtube.com/watch?v=..."
-                      />
-                    </div>
-                    <div className="youtube-input-group">
-                      <label htmlFor="youtubeTitle">動画タイトル:</label>
-                      <input
-                        type="text"
-                        id="youtubeTitle"
-                        value={youtubeTitle}
-                        onChange={handleYoutubeTitleChange}
-                        placeholder="YouTube動画のタイトルを入力..."
-                      />
-                    </div>
-                  </div>
-                )}
               </div>
             </div>
 
