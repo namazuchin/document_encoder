@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { VideoFile, AppSettings, PromptPreset, VideoQuality, ImageEmbedFrequency, YouTubeVideoInfo, VideoSource } from '../types';
+import { formatFileSize, formatDuration } from '../utils/fileUtils';
 import { 
   FaPlay, 
   FaCog, 
@@ -209,7 +210,9 @@ export default function MainDashboard({
                           {selectedFiles.map((file, index) => (
                             <div key={index} className="file-item">
                               <span className="file-name">{file.name}</span>
-                              <span className="file-size">({formatFileSize(file.size)})</span>
+                              <span className="file-info">
+                                ({formatFileSize(file.size)}{file.duration ? `, ${formatDuration(file.duration)}` : ''})
+                              </span>
                               <button 
                                 className="remove-btn"
                                 onClick={() => onRemoveFile(index)}

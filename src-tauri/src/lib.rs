@@ -387,6 +387,13 @@ async fn generate_document(
 }
 
 #[tauri::command]
+async fn get_video_duration(video_path: String) -> Result<f64, String> {
+    video::get_video_duration(&video_path)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 async fn save_settings(settings: AppSettings, app: tauri::AppHandle) -> Result<(), String> {
     // println!("save_settings called with: {:?}", settings);
     let config_path = get_config_file_path(&app)?;
@@ -880,6 +887,7 @@ pub fn run() {
             select_video_files,
             generate_document,
             generate_document_from_youtube,
+            get_video_duration,
             save_settings,
             load_settings,
             select_save_directory,

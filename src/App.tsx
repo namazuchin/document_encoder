@@ -79,7 +79,23 @@ function App() {
     try {
       const files = await invoke<VideoFile[]>("select_video_files");
       addLog(`[SUCCESS] Selected ${files.length} files: ${files.map(f => f.name).join(", ")}`);
-      setSelectedFiles(files);
+      
+      // 各ファイルの動画尺を取得
+      addLog("[INFO] Getting video duration for selected files...");
+      const filesWithDuration = await Promise.all(
+        files.map(async (file) => {
+          try {
+            const duration = await invoke<number>("get_video_duration", { videoPath: file.path });
+            addLog(`[SUCCESS] Duration for ${file.name}: ${Math.floor(duration)}s`);
+            return { ...file, duration };
+          } catch (error) {
+            addLog(`[WARNING] Failed to get duration for ${file.name}: ${error}`);
+            return file; // durationなしで返す
+          }
+        })
+      );
+      
+      setSelectedFiles(filesWithDuration);
       
       // 動画ファイルが選択された場合、最初のファイルのディレクトリを保存先として設定
       if (files.length > 0 && files[0].path) {

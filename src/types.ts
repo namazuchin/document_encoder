@@ -2,6 +2,7 @@ export interface VideoFile {
   path: string;
   name: string;
   size: number;
+  duration?: number;
 }
 
 export type VideoQuality = "NoConversion" | "1080p" | "720p" | "480p";
