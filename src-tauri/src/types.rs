@@ -36,23 +36,6 @@ pub struct VideoFile {
     pub path: String,
     pub name: String,
     pub size: u64,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub duration: Option<f64>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct YouTubeVideoInfo {
-    pub url: String,
-    pub title: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(tag = "type")]
-pub enum VideoSource {
-    #[serde(rename = "local")]
-    Local { files: Vec<VideoFile> },
-    #[serde(rename = "youtube")]
-    YouTube { video: YouTubeVideoInfo },
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
