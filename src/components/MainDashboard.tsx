@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
 import { VideoFile, AppSettings, PromptPreset, VideoQuality, ImageEmbedFrequency, YouTubeVideoInfo } from '../types';
-import { formatDuration } from '../utils/fileUtils';
+import { formatDuration, sanitizeFilename } from '../utils/fileUtils';
 import { 
   FaPlay, 
   FaCog, 
@@ -356,7 +356,7 @@ export default function MainDashboard({
                   生成ファイル名: {
                     videoSource === 'local' 
                       ? (selectedFiles.length > 0 ? generateFilename(selectedFiles) : "ファイルが選択されていません")
-                      : (youtubeTitle ? `${youtubeTitle.replace(/\s/g, '_')}.md` : "YouTubeタイトルが設定されていません")
+                      : (youtubeTitle ? `${sanitizeFilename(youtubeTitle)}.md` : "YouTubeタイトルが設定されていません")
                   }
                 </div>
               </div>

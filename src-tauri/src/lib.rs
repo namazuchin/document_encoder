@@ -10,11 +10,65 @@ mod video;
 
 use crate::file::{save_document_to_file, select_save_directory, select_video_files};
 use crate::gemini::{
-    generate_with_gemini_with_progress, generate_with_youtube_with_progress, integrate_documents, 
+    generate_with_gemini_with_progress, generate_with_youtube_with_progress, integrate_documents,
     process_document_with_images, upload_to_gemini_with_progress,
 };
 use crate::types::{AppSettings, ProgressUpdate, PromptPreset, VideoFile, YouTubeVideoInfo};
 use crate::video::{encode_video_if_needed, split_video_if_needed};
+
+fn sanitize_filename(name: &str) -> String {
+    if name.is_empty() {
+        return "untitled".to_string();
+    }
+
+    // 置換: 無効/危険文字をアンダースコアに
+    let mut safe: String = name
+        .chars()
+        .map(|c| match c {
+            '<' | '>' | ':' | '"' | '/' | '\\' | '|' | '?' | '*' => '_',
+            c if c as u32 <= 0x1F => '_', // 制御文字
+            '\u{007F}' => '_',            // DEL
+            _ => c,
+        })
+        .collect();
+
+    // 空白類をアンダースコアに
+    safe = safe
+        .split_whitespace()
+        .filter(|s| !s.is_empty())
+        .collect::<Vec<_>>()
+        .join("_");
+
+    // 連続アンダースコアを1つへ
+    while safe.contains("__") {
+        safe = safe.replace("__", "_");
+    }
+
+    // 末尾のドット/スペースを除去
+    while safe.ends_with('.') || safe.ends_with(' ') {
+        safe.pop();
+    }
+
+    // Windows予約名を回避
+    let lower = safe.to_lowercase();
+    let reserved = [
+        "con", "prn", "aux", "nul", "com1", "com2", "com3", "com4", "com5", "com6", "com7", "com8",
+        "com9", "lpt1", "lpt2", "lpt3", "lpt4", "lpt5", "lpt6", "lpt7", "lpt8", "lpt9",
+    ];
+    if reserved.contains(&lower.as_str()) {
+        safe.push('_');
+    }
+
+    if safe.is_empty() {
+        return "untitled".to_string();
+    }
+
+    if safe.len() > 120 {
+        safe.truncate(120);
+    }
+
+    safe
+}
 
 #[tauri::command]
 async fn generate_document(
@@ -835,7 +889,12 @@ async fn generate_document_from_youtube(
         }
     };
 
-    emit_progress(&app, current_step, total_steps, "YouTube動画の処理を開始しています...".to_string());
+    emit_progress(
+        &app,
+        current_step,
+        total_steps,
+        "YouTube動画の処理を開始しています...".to_string(),
+    );
 
     match generate_with_youtube_with_progress(
         &youtube_video,
@@ -851,12 +910,18 @@ async fn generate_document_from_youtube(
     .await
     {
         Ok(document) => {
-            emit_progress(&app, total_steps, total_steps, "YouTube動画からのドキュメント生成が完了しました！".to_string());
-            
-            // Generate filename based on YouTube video title
-            let filename = format!("{}.md", youtube_video.title.replace(" ", "_"));
+            emit_progress(
+                &app,
+                total_steps,
+                total_steps,
+                "YouTube動画からのドキュメント生成が完了しました！".to_string(),
+            );
+
+            // Generate sanitized filename based on YouTube video title
+            let base = sanitize_filename(&youtube_video.title);
+            let filename = format!("{}.md", base);
             let file_path = Path::new(&save_directory).join(filename);
-            
+
             // Save document to file
             match fs::write(&file_path, &document) {
                 Ok(_) => {

@@ -3,7 +3,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import "./App.css";
 import { VideoFile, AppSettings, PromptPreset, ProgressUpdate, YouTubeVideoInfo } from './types';
-import { generateFilename, getDirectoryFromPath } from './utils/fileUtils';
+import { generateFilename, getDirectoryFromPath, sanitizeFilename } from './utils/fileUtils';
 import { useLogger } from './hooks/useLogger';
 import Settings from './components/Settings';
 import PromptSettings from './components/PromptSettings';
@@ -229,7 +229,7 @@ function App() {
       }
     }
 
-    const filename = `${youtubeVideo.title.replace(/\s/g, '_')}.md`;
+    const filename = `${sanitizeFilename(youtubeVideo.title)}.md`;
     addLog(`[INFO] 生成予定ファイル名: ${filename}`);
     addLog(`[INFO] 保存先: ${currentSaveDirectory}`);
 
