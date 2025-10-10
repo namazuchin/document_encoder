@@ -1,6 +1,6 @@
 import React, { useRef, useEffect, useState } from 'react';
-import { VideoFile, AppSettings, PromptPreset, VideoQuality, ImageEmbedFrequency, YouTubeVideoInfo, VideoSource } from '../types';
-import { formatFileSize, formatDuration } from '../utils/fileUtils';
+import { VideoFile, AppSettings, PromptPreset, VideoQuality, ImageEmbedFrequency, YouTubeVideoInfo } from '../types';
+import { formatDuration } from '../utils/fileUtils';
 import { 
   FaPlay, 
   FaCog, 
