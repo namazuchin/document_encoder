@@ -1,3 +1,9 @@
+# Projectの移行
+
+本プロジェクトはWeb版である[Document Encoder Web](https://github.com/namazuchin/document_encoder_web)に移行しました。
+
+
+
 # Document Encoder
 
 動画ファイルからAI（Gemini Pro）を使ってドキュメント（マニュアル・仕様書）を自動生成するデスクトップアプリケーションです。
